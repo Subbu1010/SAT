@@ -1,0 +1,565 @@
+Build a Production-Grade PSAT/SAT fully adaptive Learning Platform
+
+Create a modern, enterprise-grade educational web application using Python and Streamlit for PSAT and SAT preparation.
+
+The application should be designed for multiple students, provide a rich user experience, support AI-powered tutoring, track performance over time, and scale for future growth.
+
+The system should dynamically adjust question difficulty based on student performance.
+
+
+Technology Stack
+Python 3.12+
+Streamlit
+Streamlit Session State
+Custom CSS
+Plotly
+Pandas
+Supabase
+PostgreSQL
+pgvector
+Gemini API
+OpenAI-compatible architecture
+Responsive Design
+Database Configuration
+
+Use Supabase as the backend database.
+
+Connection details must NOT be hardcoded.
+
+Load credentials from:
+
+Streamlit Secrets
+Environment Variables
+
+Example:
+
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+
+Implement a centralized database service layer.
+
+Authentication & Security Module
+
+This application will be used by multiple students.
+
+Every user must have an individual account.
+
+Implement:
+
+Roles:
+Admin
+Teacher
+Student
+
+Authentication Features:
+Registration
+Login
+Logout
+Forgot Password
+Reset Password
+Change Password
+
+Session Management:
+Email Verification
+Remember Me
+Admin Security Module
+
+Create a dedicated Security Administration page where administrators can:
+
+Add Users
+Remove Users
+Disable Users
+Enable Users
+Reset Passwords
+Assign Roles
+View User Activity
+View Login History
+View Student Performance
+View Exam History
+
+
+Student Features:
+~~~~~~~~~~~~~~~~~~~~
+Each student should be able to:
+
+View Practice History
+View Mock Test History
+View Performance Trends
+Track Progress
+View Weak Topics
+View Strong Topics
+Continue Previous Sessions
+Maintain Study Streaks
+
+Students should only be able to access their own data.
+
+Database Schema:
+
+Users:
+user_id
+first_name
+last_name
+email
+password_hash
+role
+created_at
+last_login
+
+Student Profiles:
+profile_id
+user_id
+grade
+target_score
+created_at
+
+Questions:
+question_id
+exam_type
+subject
+topic
+difficulty
+question_text
+options
+answer
+explanation
+strategy_tip
+estimated_time
+
+Practice Attempts:
+attempt_id
+user_id
+question_id
+selected_answer
+is_correct
+time_spent
+created_at
+
+Mock Exams:
+exam_id
+user_id
+score
+accuracy
+duration
+completed_at
+
+AI Conversations:
+conversation_id
+user_id
+question_id
+prompt
+response
+created_at
+
+Performance Analytics:
+analytics_id
+user_id
+topic
+accuracy
+total_attempts
+last_updated
+
+
+
+pgvector & RAG Support
+~~~~~~~~~~~~~~~~~~~~~~~
+Enable pgvector support in Supabase.
+
+Create an embeddings table.
+
+Embeddings Table:
+id
+content
+content_type
+source
+embedding vector
+
+Capabilities:
+
+Semantic Search
+Question Similarity Search
+Concept Retrieval
+Topic Recommendation
+AI Tutor Context Retrieval
+Personalized Learning Suggestions
+
+Create services:
+
+services/
+    vector_service.py
+    embedding_service.py
+    rag_service.py
+
+Implement:
+
+Similar Question Search
+Topic Similarity
+Retrieval Augmented Generation (RAG)
+Personalized Recommendations
+Knowledge Base Search
+
+Future-ready architecture for:
+
+LangChain
+LlamaIndex
+MCP Servers
+Agent Frameworks
+UI Requirements
+
+The application should feel like a premium SaaS product.
+
+Questions: All the questions should get it from available sources and should match with actual exam questions.
+
+
+Inspiration:
+
+Cooksat
+Crackdsat
+College panda
+Blue book
+Khan Academy
+Duolingo
+Coursera
+Notion
+Stripe Dashboard
+
+Use:
+
+White background
+Modern blue accent palette
+Soft shadows
+Rounded corners
+Responsive layout
+Smooth animations
+Glassmorphism where appropriate
+Premium typography
+
+Inject custom CSS globally.
+
+Use:
+
+CSS Variables
+Grid Layouts
+Flexbox
+Hover Effects
+Transitions
+Animations
+Dashboard Page
+
+Show:
+
+Total Questions Attempted
+Accuracy Percentage
+Average Score
+Current Streak
+Strongest Topics
+Weakest Topics
+Study Time
+
+Include:
+
+Weekly Activity Chart
+Monthly Progress Chart
+Recent Practice Sessions
+Goal Tracking
+Performance Insights
+
+Use Plotly.
+
+Practice Questions Page
+
+Filters:
+
+Exam Type:
+SAT
+PSAT
+PSAT 8/9
+
+Subject:
+Math
+Reading
+Writing
+
+Difficulty:
+Easy
+Medium
+Hard
+
+Questions:
+Should get from 
+
+Topic:
+
+Dynamic topic filtering.
+
+Question card should include:
+
+Question Text
+Passage (if applicable)
+Multiple Choice Options
+Submit Button
+Save for Later
+Flag Question
+
+After submission:
+
+Show:
+
+Correct Answer
+Explanation
+Strategy Tip
+Topic
+Difficulty
+Additional Details from Gemini
+
+For every question, include a button:
+
+Additional Details from Gemini
+
+When clicked:
+
+Send:
+
+Question
+Options
+Correct Answer
+Explanation
+
+Gemini should provide:
+
+Concept Explanation
+Step-by-Step Reasoning
+Why Correct Answer Is Correct
+Why Other Answers Are Incorrect
+SAT/PSAT Test-Taking Strategy
+Additional Examples
+Similar Practice Tips
+
+Display inside:
+
+Expandable Panel
+Chat Style Response
+Streaming Output
+
+Implement:
+
+services/
+    gemini_service.py
+
+Add:
+
+Error Handling
+Retry Logic
+Rate Limiting
+Response Caching
+
+Never expose API keys in frontend code.
+
+Timed Mock Exam Page
+
+Features:
+
+Start Test
+Pause
+Resume
+End Test
+
+Show:
+
+Countdown Timer
+Progress Bar
+Question Navigator
+Flagged Questions
+Remaining Questions
+
+At completion:
+
+Display:
+
+Score
+Accuracy
+Time Taken
+Subject Breakdown
+Topic Breakdown
+Performance Analysis
+Performance Analytics
+
+Create rich analytics dashboards.
+
+Use Plotly.
+
+Show:
+
+Subject Accuracy
+Topic Accuracy
+Difficulty Accuracy
+Performance Trends
+Time Spent
+Weak Areas
+Strong Areas
+
+Include:
+
+Heatmaps
+Bar Charts
+Line Charts
+Radar Charts
+Progress Curves
+AI Tutor Page
+
+Build a full AI Tutor.
+
+Student can ask:
+
+Explain Concepts
+Solve Problems
+Generate Practice Questions
+Explain Answers
+Study Strategies
+SAT/PSAT Preparation Guidance
+
+Features:
+
+Chat History
+Saved Conversations
+Streaming Responses
+Suggested Prompts
+Context-Aware Responses
+
+Use pgvector RAG retrieval before calling Gemini.
+
+Admin Panel
+
+Create an Admin Dashboard.
+
+Features:
+
+User Management
+Question Management
+Analytics Dashboard
+Student Monitoring
+Performance Tracking
+
+Question Management:
+
+Add Questions
+Edit Questions
+Delete Questions
+Bulk upload CSV and PDF. Connect with GEMINI to read the CSV/pdf content and save the questions and options into database if needed.
+Bulk Upload Excel
+Import Question Banks
+Reusable Components
+
+Create reusable UI components:
+
+components/
+
+Include:
+
+Statistic Card
+Icon
+Title
+Value
+Trend
+Question Card
+Professional Exam Layout
+Progress Card
+Animated Progress
+Achievement Badge
+Gamification
+Streak Widget
+Daily Study Tracking
+Leaderboard Widget
+Optional Future Feature
+Project Structure
+app/
+│
+├── app.py
+├── pages/
+├── components/
+├── services/
+├── database/
+├── styles/
+├── utils/
+├── assets/
+├── prompts/
+├── models/
+├── authentication/
+├── analytics/
+├── rag/
+├── vector/
+└── tests/
+Question Bank Requirements
+
+Support:
+
+SAT
+PSAT
+PSAT 8/9
+
+Subjects:
+
+Math
+Reading
+Writing
+
+Topics:
+
+Algebra
+Advanced Math
+Problem Solving
+Data Analysis
+Geometry
+Trigonometry
+Reading Comprehension
+Vocabulary
+Grammar
+Writing
+
+
+Questions: All the questions should be pulled from matching with exact exam questions.
+
+Store:
+
+Difficulty
+Topic
+Skill Category
+Explanation
+Strategy Tip
+Estimated Time
+
+Build the system so additional question sources can be imported later through CSV, Excel, APIs, or database loaders.
+
+Deliverables
+
+Generate:
+
+Complete Project Structure
+Database Models
+Supabase Integration
+pgvector Integration
+Authentication System
+Admin Security Module
+Dashboard
+Practice Engine
+Mock Exam Engine
+AI Tutor
+Gemini Integration
+Analytics Dashboard
+Custom CSS Theme
+Reusable Components
+Database Scripts
+Requirements.txt
+README.md
+Deployment Guide
+
+Reference links for latest questions:
+https://www.manhattanreview.com/sat-practice-questions/ and consider all Math questions and include into local question bank
+https://www.princetonreview.com/college-advice/sat-practice-questions#!tab2 and consider math add into local question bank
+https://www.kaptest.com/sat/free/sat-20-minute-workout?srsltid=AfmBOoq_orQRzDzJ1-DVU3bnw_ZG46DAGV8sqDOIhaAgYoDdk2E8EFQH
+https://www.khanacademy.org/test-prep/v2-sat-math
+https://academy-pq.app.mometrix.com/practicequestion/test/SAT_Math/21589854#103933-1.3.1
+
+
+The final application should look and behave like a premium commercial EdTech platform rather than a standard Streamlit application, with modern UI/UX, scalability, clean architecture, and future-ready AI capabilities.
+
+

@@ -1,0 +1,4 @@
+exam_type,subject,topic,difficulty,question_text,options,answer,explanation,strategy_tip,estimated_time,skill_category
+SAT,Math,Algebra,Easy,"If 2x + 5 = 17, what is x?","6||4||5||7",6,"Subtract 5 from both sides to get 2x=12, then divide by 2.","Isolate variable step by step.",45,Linear Equations
+PSAT,Math,Geometry,Medium,"A triangle has angles 50° and 60°. What is the third angle?","70||80||90||100",70,"Triangle angles sum to 180°, so 180-110=70.","Use known angle sum formulas quickly.",50,Angle Relationships
+PSAT 8/9,Writing,Grammar,Easy,"Choose the correct sentence.","The student are ready.||The students is ready.||The students are ready.||The student ready.",The students are ready.,"Plural subject needs plural verb.","Check subject-verb agreement first.",40,Grammar Rules
