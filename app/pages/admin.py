@@ -20,7 +20,10 @@ def render():
 
     with t1:
         st.subheader("Add User")
-        st.caption("Creates account in Supabase Auth and syncs to public.users.")
+        st.caption(
+            "Creates account in Supabase Auth and syncs to public.users. "
+            "The initial password is temporary—the user must set a new password on first login."
+        )
         with st.form("add_user"):
             col1, col2 = st.columns(2)
             with col1:
@@ -32,7 +35,7 @@ def render():
             password = st.text_input(
                 "Initial password",
                 type="password",
-                help="User can change this after first login.",
+                help="Temporary password. User must replace it on first login.",
             )
             submitted = st.form_submit_button("Add User")
             if submitted:

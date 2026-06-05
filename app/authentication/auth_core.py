@@ -2,16 +2,9 @@
 
 from __future__ import annotations
 
-from supabase import Client, create_client
-
-from app.utils.config import get_config
+from app.database.supabase_client import get_supabase_client
 
 INVALID_CREDENTIALS = "Invalid login credentials"
-
-
-def get_public_client() -> Client:
-    cfg = get_config()
-    return create_client(cfg.supabase_url, cfg.supabase_publishable_key)
 
 
 def sign_in(email: str, password: str) -> dict:
@@ -23,7 +16,7 @@ def sign_in(email: str, password: str) -> dict:
     if not email or not password:
         return {"ok": False, "error": "Email and password are required."}
 
-    client = get_public_client()
+    client = get_supabase_client()
     try:
         response = client.auth.sign_in_with_password({"email": email, "password": password})
     except Exception as exc:

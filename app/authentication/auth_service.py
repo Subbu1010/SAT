@@ -10,7 +10,7 @@ from app.authentication.session_store import (
     restore_session,
     save_session_tokens,
 )
-from app.database.supabase_client import get_supabase_client
+from app.database.supabase_client import get_supabase_admin_client, get_supabase_client
 from app.services.login_history_service import log_login_event
 
 
@@ -64,6 +64,7 @@ class AuthService:
         st.session_state["session_persistent"] = remember_me
 
         if session:
+            self._apply_session(session)
             save_session_tokens(session, remember_me)
 
         meta = user.user_metadata or {}
@@ -109,12 +110,99 @@ class AuthService:
         st.session_state.pop("auth_user", None)
         st.session_state["is_authenticated"] = False
         st.session_state.pop("session_persistent", None)
+        st.session_state.pop("auth_access_token", None)
+        st.session_state.pop("auth_refresh_token", None)
 
     def forgot_password(self, email: str):
         return self.client.auth.reset_password_for_email(email.strip())
 
+    def must_reset_password(self) -> bool:
+        user = self.current_user()
+        if not user:
+            return False
+        return bool((user.user_metadata or {}).get("must_reset_password"))
+
     def change_password(self, new_password: str):
         return self.client.auth.update_user({"password": new_password})
+
+    def _apply_session(self, session) -> None:
+        if not session or not getattr(session, "access_token", None):
+            return
+        self.client.auth.set_session(session.access_token, session.refresh_token)
+        st.session_state["auth_access_token"] = session.access_token
+        st.session_state["auth_refresh_token"] = session.refresh_token
+
+    def ensure_supabase_session(self) -> bool:
+        """Ensure the Supabase client has a valid JWT for auth APIs."""
+        try:
+            response = self.client.auth.get_user()
+            if response and response.user:
+                return True
+        except Exception:
+            pass
+
+        access = st.session_state.get("auth_access_token")
+        refresh = st.session_state.get("auth_refresh_token")
+        if access and refresh:
+            try:
+                result = self.client.auth.set_session(access, refresh)
+                if result and result.user:
+                    st.session_state["auth_user"] = result.user
+                if result and result.session:
+                    self._apply_session(result.session)
+                return bool(result and result.user)
+            except Exception:
+                pass
+
+        return restore_session(self.client)
+
+    def complete_password_reset(self, new_password: str) -> None:
+        user = self.current_user()
+        if not user:
+            raise RuntimeError("Not logged in.")
+
+        email = user.email or ""
+        metadata = dict(user.user_metadata or {})
+        metadata["must_reset_password"] = False
+        update_payload = {"password": new_password, "user_metadata": metadata}
+
+        if not self.ensure_supabase_session():
+            self._admin_update_user(user.id, update_payload)
+        else:
+            try:
+                response = self.client.auth.update_user(
+                    {"password": new_password, "data": metadata}
+                )
+                if response and response.user:
+                    st.session_state["auth_user"] = response.user
+                if response and response.session:
+                    self._apply_session(response.session)
+            except Exception:
+                self._admin_update_user(user.id, update_payload)
+
+        if email:
+            result = sign_in(email, new_password)
+            if result["ok"] and result.get("session"):
+                self._apply_session(result["session"])
+                st.session_state["auth_user"] = result["user"]
+                st.session_state["is_authenticated"] = True
+                save_session_tokens(
+                    result["session"],
+                    st.session_state.get("session_persistent", False),
+                )
+
+    def _admin_update_user(self, user_id: str, payload: dict) -> None:
+        try:
+            admin = get_supabase_admin_client()
+            admin.auth.admin.update_user_by_id(user_id, payload)
+            refreshed = admin.auth.admin.get_user_by_id(user_id)
+            if refreshed and refreshed.user:
+                st.session_state["auth_user"] = refreshed.user
+        except Exception as exc:
+            raise RuntimeError(
+                "Could not update password. SUPABASE_SECRET_KEY is required for "
+                "first-login password reset when the auth session is unavailable."
+            ) from exc
 
     def current_user(self):
         return st.session_state.get("auth_user")

@@ -1,3 +1,28 @@
+/* Hide Streamlit Cloud toolbar: Share, Edit, GitHub, Deploy, menu */
+#MainMenu {
+  visibility: hidden;
+}
+
+header[data-testid="stHeader"] {
+  display: none !important;
+}
+
+[data-testid="stToolbar"] {
+  display: none !important;
+}
+
+[data-testid="stToolbarActions"] {
+  display: none !important;
+}
+
+.stAppDeployButton {
+  display: none !important;
+}
+
+footer {
+  visibility: hidden;
+}
+
 :root {
   --bg: #f8fbff;
   --surface: #ffffff;

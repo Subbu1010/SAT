@@ -1,0 +1,10 @@
+[client]
+# Hide deploy, rerun, cache, and developer menu for all viewers (including Cloud owners).
+toolbarMode = "minimal"
+
+[ui]
+# Hide the Streamlit top bar (running status, toolbar actions).
+hideTopBar = true
+
+[browser]
+gatherUsageStats = false

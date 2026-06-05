@@ -8,7 +8,7 @@ def test_sign_in_requires_email_and_password():
     assert sign_in("a@b.com", "")["ok"] is False
 
 
-@patch("app.authentication.auth_core.get_public_client")
+@patch("app.authentication.auth_core.get_supabase_client")
 def test_sign_in_success(mock_get_client):
     mock_user = MagicMock()
     mock_user.id = "uuid-1"
@@ -28,7 +28,7 @@ def test_sign_in_success(mock_get_client):
     )
 
 
-@patch("app.authentication.auth_core.get_public_client")
+@patch("app.authentication.auth_core.get_supabase_client")
 def test_sign_in_invalid_credentials(mock_get_client):
     mock_client = MagicMock()
     mock_client.auth.sign_in_with_password.side_effect = Exception("Invalid login credentials")

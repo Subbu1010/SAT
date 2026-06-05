@@ -86,6 +86,9 @@ def restore_session(client: Client) -> bool:
 
     st.session_state["auth_user"] = response.user
     st.session_state["is_authenticated"] = True
+    if response.session:
+        st.session_state["auth_access_token"] = response.session.access_token
+        st.session_state["auth_refresh_token"] = response.session.refresh_token
     return True
 
 

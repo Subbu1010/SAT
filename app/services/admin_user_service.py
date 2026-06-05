@@ -41,7 +41,12 @@ def create_user(
         return False, "Invalid role."
 
     client = get_supabase_admin_client()
-    metadata = {"first_name": first_name, "last_name": last_name, "role": role}
+    metadata = {
+        "first_name": first_name,
+        "last_name": last_name,
+        "role": role,
+        "must_reset_password": True,
+    }
 
     try:
         existing_id = _find_auth_user_id(client, email)
@@ -94,6 +99,10 @@ def create_user(
                 ).execute()
 
         action = "created" if created else "updated"
-        return True, f"User {action}: {email} ({role})"
+        return (
+            True,
+            f"User {action}: {email} ({role}). "
+            "They must set a new password on first login.",
+        )
     except Exception as exc:
         return False, str(exc)
