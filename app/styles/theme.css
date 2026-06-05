@@ -23,6 +23,14 @@ footer {
   visibility: hidden;
 }
 
+div[data-testid="stDecoration"] {
+  display: none !important;
+}
+
+div[data-testid="stStatusWidget"] {
+  display: none !important;
+}
+
 :root {
   --bg: #f8fbff;
   --surface: #ffffff;

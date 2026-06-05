@@ -14,6 +14,18 @@
    - `OPENAI_MODEL` (optional)
 5. Deploy.
 
+### Share the app with students
+
+Give students and teachers this URL (embed mode hides extra Streamlit chrome):
+
+```text
+https://<your-app>.streamlit.app/?embed=true
+```
+
+The in-app **Admin** navigation item is already restricted to SAT users with the `admin` role.
+
+**About "Manage app" on Streamlit Cloud:** That button is added by the Streamlit hosting platform. It appears only when you are logged into [share.streamlit.io](https://share.streamlit.io) **and** you have write access to the app's GitHub repository. Students and teachers do not see it. It cannot be tied to your SAT app admin login. To preview the student experience, open the app in a private/incognito window or log out of Streamlit Cloud while testing.
+
 ## Option B: Container Deployment
 
 1. Build image with Python 3.12.
