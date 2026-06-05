@@ -1,10 +1,15 @@
 import streamlit as st
 
 from app.authentication.auth_service import AuthService
-from app.database.supabase_client import get_supabase_admin_client, get_supabase_client
-from app.services.admin_user_service import create_user
+from app.database.supabase_client import get_supabase_admin_client
+from app.services.admin_user_service import create_user, reset_user_password
+from app.services.admin_performance_service import (
+    fetch_exam_history,
+    fetch_student_performance_summary,
+)
 from app.services.login_history_service import fetch_login_history
-from app.database.bulk_seed import seed_bulk_questions
+from app.database.bulk_seed import reload_exam_catalog, seed_bulk_questions
+from app.database.exam_catalog import EXAM_TYPES
 from app.services.question_import_service import QuestionImportService
 
 
@@ -12,7 +17,6 @@ def render():
     st.title("Security Administration")
     auth = AuthService()
     auth.require_role({"admin"})
-    client = get_supabase_client()
 
     t1, t2, t3, t4 = st.tabs(
         ["User Management", "Security Logs", "Student Performance", "Question Management"]
@@ -56,7 +60,52 @@ def render():
         try:
             admin_client = get_supabase_admin_client()
             rows = admin_client.table("users").select("*").order("created_at", desc=True).execute()
-            st.dataframe(rows.data or [], use_container_width=True)
+            users = rows.data or []
+            if not users:
+                st.info("No users found.")
+            else:
+                st.dataframe(users, use_container_width=True)
+
+            st.divider()
+            st.subheader("Reset Password")
+            st.caption("Set a new password for any user. Admin access only.")
+            for user in users:
+                name = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip()
+                label = f"{name or 'Unnamed'} — {user.get('email', '')} ({user.get('role', '')})"
+                with st.expander(label):
+                    st.caption(
+                        f"User ID: `{user.get('user_id')}` · "
+                        f"Last login: {user.get('last_login') or 'Never'}"
+                    )
+                    with st.form(f"reset_password_{user.get('user_id')}"):
+                        new_password = st.text_input(
+                            "New password",
+                            type="password",
+                            key=f"new_pwd_{user.get('user_id')}",
+                        )
+                        confirm_password = st.text_input(
+                            "Confirm new password",
+                            type="password",
+                            key=f"confirm_pwd_{user.get('user_id')}",
+                        )
+                        require_change = st.checkbox(
+                            "Require password change on next login",
+                            value=True,
+                            key=f"require_change_{user.get('user_id')}",
+                        )
+                        if st.form_submit_button("Reset password", type="primary"):
+                            if new_password != confirm_password:
+                                st.error("Passwords do not match.")
+                            else:
+                                ok, message = reset_user_password(
+                                    user_id=user["user_id"],
+                                    new_password=new_password,
+                                    require_change_on_login=require_change,
+                                )
+                                if ok:
+                                    st.success(message)
+                                else:
+                                    st.error(message)
         except Exception as exc:
             st.warning(f"Could not load users: {exc}")
 
@@ -69,9 +118,29 @@ def render():
             st.info("No login events yet. History is recorded when users log in or out.")
 
     with t3:
-        st.subheader("Exam and Performance History")
-        perf = client.table("performance_analytics").select("*").limit(100).execute()
-        st.dataframe(perf.data or [])
+        st.subheader("Student Performance")
+        try:
+            summary = fetch_student_performance_summary()
+            if summary:
+                st.dataframe(summary, use_container_width=True)
+            else:
+                st.info(
+                    "No student activity yet. Performance appears here after students "
+                    "complete practice questions or mock exams."
+                )
+        except Exception as exc:
+            st.warning(f"Could not load student performance: {exc}")
+
+        st.divider()
+        st.subheader("Exam History")
+        try:
+            history = fetch_exam_history()
+            if history:
+                st.dataframe(history, use_container_width=True)
+            else:
+                st.info("No mock exams completed yet.")
+        except Exception as exc:
+            st.warning(f"Could not load exam history: {exc}")
 
     with t4:
         st.subheader("Bulk Upload Questions")
@@ -90,8 +159,18 @@ def render():
         )
         st.divider()
         st.subheader("Practice Question Bank")
-        st.caption("Loads 100 questions per exam type, subject, and topic (3,000 total). Safe to run again.")
-        if st.button("Seed practice bank (100 per topic)"):
+        st.caption(
+            f"Downloads OpenSAT (structured community bank), validates format, removes duplicates, "
+            f"and reviews public forum sources — only verified accurate items are added "
+            f"(forum dumps are rejected by default). Easy/Medium/Hard loaded for {', '.join(EXAM_TYPES)}. "
+            "Official College Board PDF exports: use CSV import above. See docs/QUESTION_SOURCES.md."
+        )
+        replace_all = st.checkbox(
+            "Delete ALL existing questions first",
+            value=True,
+            help="Removes every question, then downloads and inserts the full OpenSAT bank.",
+        )
+        if st.button("Download latest question bank"):
             progress = st.progress(0, text="Starting...")
             status = st.empty()
 
@@ -99,7 +178,10 @@ def render():
                 progress.progress(done / total, text=msg)
                 status.caption(f"{done}/{total} — {msg}")
 
-            ok, message = seed_bulk_questions(progress_callback=on_progress)
+            if replace_all:
+                ok, message = reload_exam_catalog(progress_callback=on_progress)
+            else:
+                ok, message = seed_bulk_questions(progress_callback=on_progress)
             progress.progress(1.0, text="Done")
             if ok:
                 st.success(message)

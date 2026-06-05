@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from app.database.supabase_client import get_supabase_client
 
+DEFAULT_QUERY_LIMIT = 10_000
+
 
 class QuestionService:
     def __init__(self):
@@ -17,7 +19,7 @@ class QuestionService:
         subject: str,
         difficulty: str | None = None,
         topic: str | None = None,
-        limit: int = 20,
+        limit: int = DEFAULT_QUERY_LIMIT,
     ):
         query = self.client.table("questions").select("*").eq("exam_type", exam_type).eq(
             "subject", subject

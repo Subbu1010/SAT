@@ -11,6 +11,8 @@ from app.services.mock_exam_service import (
     save_mock_exam,
     score_exam,
 )
+from app.utils.compact_layout import inject_compact_spacing
+from app.utils.question_shuffle import shuffled_options
 
 DEFAULT_DURATION = 60 * 60
 
@@ -303,124 +305,111 @@ def _render_flagged_panel(questions: list[dict]) -> None:
             st.divider()
 
 
-def _render_question_grid(questions: list[dict], indices: list[int] | None = None) -> None:
-    flagged_ids = set(st.session_state["exam_flagged"])
-    answers = st.session_state["exam_answers"]
-    current = st.session_state["exam_index"]
-    cols_per_row = 10
-    display_indices = indices if indices is not None else list(range(len(questions)))
-
-    st.markdown("**Question navigator**")
-    for row_start in range(0, len(display_indices), cols_per_row):
-        cols = st.columns(cols_per_row)
-        for col_offset, col in enumerate(cols):
-            pos = row_start + col_offset
-            if pos >= len(display_indices):
-                break
-            idx = display_indices[pos]
-            question = questions[idx]
-            qid = question["question_id"]
-            if idx == current:
-                label = f"▶ {idx + 1}"
-            elif qid in flagged_ids:
-                label = f"🚩 {idx + 1}"
-            elif qid in answers:
-                label = f"✓ {idx + 1}"
-            else:
-                label = str(idx + 1)
-
-            with col:
-                if st.button(label, key=f"nav_q_{idx}", use_container_width=True):
-                    st.session_state["exam_index"] = idx
-                    st.rerun()
+def _nav_button_label(
+    idx: int,
+    questions: list[dict],
+    flagged_ids: set[str],
+    answers: dict[str, str],
+) -> str:
+    qid = questions[idx]["question_id"]
+    number = str(idx + 1)
+    if qid in flagged_ids:
+        return f"{number}🚩"
+    if qid in answers:
+        return f"{number}✓"
+    return number
 
 
 def _render_question_nav(questions: list[dict], total: int) -> None:
-    answered = len(st.session_state["exam_answers"])
-    flagged = len(st.session_state["exam_flagged"])
-    remaining = total - answered
     flagged_only = st.session_state.get("exam_review_flagged_only", False)
-
-    st.caption(
-        f"Answered: {answered} | Remaining: {remaining} | Flagged: {flagged}"
-    )
-    st.checkbox(
-        "Review flagged only",
-        key="exam_review_flagged_only",
-        help="Shows flagged questions and moves Previous/Next only between them.",
-    )
-
     flagged_idxs = _flagged_indices(questions)
     if flagged_only:
         if not flagged_idxs:
             st.caption("Flag at least one question to use review mode.")
-        elif st.session_state["exam_index"] not in flagged_idxs:
+            return
+        if st.session_state["exam_index"] not in flagged_idxs:
             st.session_state["exam_index"] = flagged_idxs[0]
             st.rerun()
 
-    cols = st.columns([1, 2, 1])
+    display_indices = flagged_idxs if flagged_only else list(range(len(questions)))
     nav_disabled = not questions or (flagged_only and not flagged_idxs)
+    flagged_ids = set(st.session_state["exam_flagged"])
+    answers = st.session_state["exam_answers"]
+    current = st.session_state["exam_index"]
+    n = len(display_indices)
+
+    st.markdown(
+        """
+        <style>
+        .exam-nav-block + div[data-testid="stHorizontalBlock"] {
+          overflow-x: auto;
+          overflow-y: hidden;
+          flex-wrap: nowrap !important;
+          gap: 0.2rem;
+          padding-bottom: 0.1rem;
+        }
+        .exam-nav-block + div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+          width: auto !important;
+          min-width: 2.6rem;
+          flex: 0 0 auto !important;
+        }
+        .exam-nav-block + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:first-child,
+        .exam-nav-block + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:last-child {
+          min-width: 2.4rem;
+        }
+        .exam-nav-block + div[data-testid="stHorizontalBlock"] button {
+          white-space: nowrap !important;
+          min-width: 2.4rem;
+          min-height: 1.85rem;
+          padding: 0.2rem 0.4rem;
+          font-size: 0.78rem;
+          line-height: 1.1;
+        }
+        .exam-nav-block + div[data-testid="stHorizontalBlock"] button p {
+          white-space: nowrap !important;
+        }
+        </style>
+        <div class="exam-nav-block"></div>
+        """,
+        unsafe_allow_html=True,
+    )
+    cols = st.columns([1] + [1] * n + [1])
     with cols[0]:
-        if st.button("Previous", disabled=nav_disabled):
+        if st.button("◀", key="exam_prev", disabled=nav_disabled, use_container_width=True):
             if flagged_only and flagged_idxs:
-                current = st.session_state["exam_index"]
                 if current not in flagged_idxs:
                     st.session_state["exam_index"] = flagged_idxs[-1]
                 else:
                     pos = flagged_idxs.index(current)
                     if pos > 0:
                         st.session_state["exam_index"] = flagged_idxs[pos - 1]
-            elif st.session_state["exam_index"] > 0:
-                st.session_state["exam_index"] -= 1
+            elif current > 0:
+                st.session_state["exam_index"] = current - 1
             st.rerun()
-    with cols[1]:
-        if flagged_only and flagged_idxs:
-            jump_options = [idx + 1 for idx in flagged_idxs]
-            current_pos = (
-                flagged_idxs.index(st.session_state["exam_index"])
-                if st.session_state["exam_index"] in flagged_idxs
-                else 0
-            )
-            jump = st.selectbox(
-                "Jump to flagged question",
-                jump_options,
-                index=current_pos,
-                format_func=lambda n: f"Question {n} 🚩",
-                label_visibility="collapsed",
-            )
-            new_index = jump - 1
-        else:
-            jump = st.selectbox(
-                "Jump to question",
-                list(range(1, total + 1)),
-                index=st.session_state["exam_index"],
-                format_func=lambda n: (
-                    f"Question {n} 🚩"
-                    if questions[n - 1]["question_id"] in st.session_state["exam_flagged"]
-                    else f"Question {n}"
-                ),
-                label_visibility="collapsed",
-            )
-            new_index = jump - 1
-        if new_index != st.session_state["exam_index"]:
-            st.session_state["exam_index"] = new_index
-            st.rerun()
-    with cols[2]:
-        if st.button("Next", disabled=nav_disabled):
+
+    for i, idx in enumerate(display_indices):
+        with cols[i + 1]:
+            if st.button(
+                _nav_button_label(idx, questions, flagged_ids, answers),
+                key=f"nav_q_{idx}",
+                type="primary" if idx == current else "secondary",
+                use_container_width=False,
+            ):
+                st.session_state["exam_index"] = idx
+                st.rerun()
+
+    with cols[-1]:
+        if st.button("▶", key="exam_next", disabled=nav_disabled, use_container_width=True):
             if flagged_only and flagged_idxs:
-                current = st.session_state["exam_index"]
                 if current not in flagged_idxs:
                     st.session_state["exam_index"] = flagged_idxs[0]
                 else:
                     pos = flagged_idxs.index(current)
                     if pos < len(flagged_idxs) - 1:
                         st.session_state["exam_index"] = flagged_idxs[pos + 1]
-            elif st.session_state["exam_index"] < total - 1:
-                st.session_state["exam_index"] += 1
+            elif current < total - 1:
+                st.session_state["exam_index"] = current + 1
             st.rerun()
-
-    grid_indices = flagged_idxs if flagged_only and flagged_idxs else None
-    _render_question_grid(questions, grid_indices)
 
 
 def _render_active_exam() -> None:
@@ -447,10 +436,22 @@ def _render_active_exam() -> None:
     qid = question["question_id"]
     total = len(questions)
 
-    st.markdown(
-        f"**Question {index + 1} of {total}** — "
-        f"{question.get('subject')} · {question.get('topic')} · {question.get('difficulty')}"
-    )
+    answered = len(st.session_state["exam_answers"])
+    flagged_count = len(st.session_state["exam_flagged"])
+    remaining = total - answered
+    cap_col, flag_col = st.columns([5, 1])
+    with cap_col:
+        st.caption(
+            f"Question {index + 1} of {total} — "
+            f"{question.get('subject')} · {question.get('topic')} · {question.get('difficulty')} · "
+            f"Answered: {answered} · Remaining: {remaining} · Flagged: {flagged_count}"
+        )
+    with flag_col:
+        st.checkbox(
+            "Flagged only",
+            key="exam_review_flagged_only",
+            help="Navigator shows flagged questions only; Previous/Next move between them.",
+        )
     _render_question_nav(questions, total)
     if st.session_state.get("exam_review_flagged_only"):
         _render_flagged_panel(questions)
@@ -461,7 +462,7 @@ def _render_active_exam() -> None:
         with st.expander("Passage"):
             st.write(question["passage"])
 
-    options = question.get("options", [])
+    options = shuffled_options(question, session_key=f"exam_opts_{qid}")
     if options:
         selected = st.radio(
             "Choose your answer",
@@ -485,6 +486,7 @@ def _render_active_exam() -> None:
 
 
 def render():
+    inject_compact_spacing()
     st.title("Timed Mock Exam")
     _init_state()
 
@@ -493,16 +495,19 @@ def render():
         return
 
     if not st.session_state["exam_running"]:
-        st.session_state["exam_type"] = st.selectbox(
-            "Exam Type",
-            ["SAT", "PSAT", "PSAT 8/9"],
-            index=["SAT", "PSAT", "PSAT 8/9"].index(st.session_state["exam_type"]),
-        )
-        duration_mins = st.selectbox("Duration", [30, 45, 60], index=2)
+        setup_col1, setup_col2 = st.columns(2)
+        with setup_col1:
+            st.session_state["exam_type"] = st.selectbox(
+                "Exam Type",
+                ["SAT", "PSAT", "PSAT 8/9"],
+                index=["SAT", "PSAT", "PSAT 8/9"].index(st.session_state["exam_type"]),
+            )
+        with setup_col2:
+            duration_mins = st.selectbox("Duration (min)", [30, 45, 60], index=2)
         st.session_state["exam_duration"] = duration_mins * 60
-        st.info(
-            f"Each mock exam includes up to {DEFAULT_QUESTIONS_PER_SUBJECT} questions "
-            f"per subject ({DEFAULT_QUESTIONS_PER_SUBJECT * 3} total)."
+        st.caption(
+            f"Up to {DEFAULT_QUESTIONS_PER_SUBJECT} questions per subject "
+            f"({DEFAULT_QUESTIONS_PER_SUBJECT * 3} total, shuffled)"
         )
 
     c1, c2, c3 = st.columns(3)

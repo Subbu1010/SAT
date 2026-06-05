@@ -1,14 +1,14 @@
 import streamlit as st
 
 
-def render_question_card(question: dict):
+def render_question_card(question: dict, display_options: list[str] | None = None):
     st.markdown('<div class="card question-card">', unsafe_allow_html=True)
     st.markdown(f"### {question.get('question_text', 'Question')}")
     if question.get("passage"):
         with st.expander("Passage"):
             st.write(question["passage"])
 
-    options = question.get("options", [])
+    options = display_options if display_options is not None else question.get("options", [])
     option = None
     if options:
         option = st.radio(

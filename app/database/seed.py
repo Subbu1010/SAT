@@ -2,12 +2,9 @@ from __future__ import annotations
 
 from supabase import Client
 
-from app.database.seed_data import (
-    DEFAULT_TEST_PASSWORD,
-    SAMPLE_QUESTIONS,
-    SEED_SOURCE,
-    TEST_USERS,
-)
+from app.database.bulk_seed import exam_bank_ready, reload_exam_catalog, seed_bulk_questions
+from app.database.exam_catalog import EXAM_TYPES
+from app.database.seed_data import DEFAULT_TEST_PASSWORD, TEST_USERS
 from app.database.supabase_client import get_supabase_admin_client, get_supabase_client
 from app.utils.config import get_config
 
@@ -116,23 +113,19 @@ def seed_test_users() -> tuple[bool, str]:
 
 
 def seed_sample_questions() -> tuple[bool, str]:
-    client = _admin_client() or get_supabase_client()
+    """Legacy sample seed disabled — full exam catalog is used instead."""
+    return True, "Sample question seed skipped (exam catalog is the sole question source)."
 
-    try:
-        existing = (
-            client.table("questions").select("question_id").eq("source", SEED_SOURCE).limit(1).execute()
-        )
-    except Exception as exc:
-        if "relation" in str(exc).lower() or "does not exist" in str(exc).lower():
-            return False, f"Question seed skipped: tables missing. {_SCHEMA_HINT}"
-        return False, f"Question seed failed: {exc}"
 
-    if existing.data:
-        return True, "Sample questions already loaded."
+def seed_practice_bank() -> tuple[bool, str]:
+    """Ensure SAT, PSAT, and PSAT 8/9 banks are populated from the OpenSAT source."""
+    if exam_bank_ready():
+        return True, f"Practice bank ready for {', '.join(EXAM_TYPES)}."
 
-    rows = [{**q, "source": SEED_SOURCE} for q in SAMPLE_QUESTIONS]
-    client.table("questions").insert(rows).execute()
-    return True, f"Loaded {len(rows)} sample questions."
+    ok, message = seed_bulk_questions()
+    if ok and exam_bank_ready(min_per_exam=200):
+        return True, f"Loaded practice questions for {', '.join(EXAM_TYPES)}. {message}"
+    return ok, message
 
 
 def run_startup_seed() -> list[tuple[str, str]]:
@@ -143,5 +136,8 @@ def run_startup_seed() -> list[tuple[str, str]]:
 
     q_ok, q_msg = seed_sample_questions()
     results.append(("success" if q_ok else "warning", q_msg))
+
+    bank_ok, bank_msg = seed_practice_bank()
+    results.append(("success" if bank_ok else "warning", bank_msg))
 
     return results

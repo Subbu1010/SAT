@@ -3,6 +3,8 @@ from __future__ import annotations
 from app.database.supabase_client import get_supabase_admin_client
 from app.utils.config import get_config
 
+MIN_PASSWORD_LENGTH = 8
+
 
 def _find_auth_user_id(client, email: str) -> str | None:
     try:
@@ -104,5 +106,47 @@ def create_user(
             f"User {action}: {email} ({role}). "
             "They must set a new password on first login.",
         )
+    except Exception as exc:
+        return False, str(exc)
+
+
+def reset_user_password(
+    user_id: str,
+    new_password: str,
+    *,
+    require_change_on_login: bool = True,
+) -> tuple[bool, str]:
+    """Set a user's password via Supabase Admin API (admin-only)."""
+    cfg = get_config()
+    if not cfg.supabase_secret_key:
+        return False, "SUPABASE_SECRET_KEY is required for password reset."
+
+    if len(new_password) < MIN_PASSWORD_LENGTH:
+        return False, f"Password must be at least {MIN_PASSWORD_LENGTH} characters."
+
+    client = get_supabase_admin_client()
+    try:
+        user_resp = client.auth.admin.get_user_by_id(user_id)
+        if not user_resp or not user_resp.user:
+            return False, "User not found in Supabase Auth."
+
+        metadata = dict(user_resp.user.user_metadata or {})
+        metadata["must_reset_password"] = require_change_on_login
+
+        client.auth.admin.update_user_by_id(
+            user_id,
+            {
+                "password": new_password,
+                "user_metadata": metadata,
+            },
+        )
+
+        email = user_resp.user.email or user_id
+        if require_change_on_login:
+            return (
+                True,
+                f"Password reset for {email}. They must choose a new password on next login.",
+            )
+        return True, f"Password updated for {email}."
     except Exception as exc:
         return False, str(exc)

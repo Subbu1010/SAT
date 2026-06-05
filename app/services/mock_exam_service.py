@@ -6,6 +6,7 @@ from typing import Any
 
 from app.database.supabase_client import get_supabase_client
 from app.services.question_service import QuestionService
+from app.utils.question_shuffle import shuffle_question_choices, shuffle_questions
 
 SUBJECTS = ["Math", "Reading", "Writing"]
 DEFAULT_QUESTIONS_PER_SUBJECT = 10
@@ -30,14 +31,13 @@ def build_mock_exam(
     selected: list[dict] = []
 
     for subject in SUBJECTS:
-        pool = qs.get_questions(exam_type=exam_type, subject=subject, limit=100)
+        pool = qs.get_questions(exam_type=exam_type, subject=subject, limit=5000)
         if not pool:
             continue
         count = min(questions_per_subject, len(pool))
         selected.extend(random.sample(pool, count))
 
-    random.shuffle(selected)
-    return selected
+    return shuffle_question_choices(shuffle_questions(selected))
 
 
 def _normalize_answer(value: str | int | float | None) -> str | None:
