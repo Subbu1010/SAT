@@ -1,10 +1,12 @@
 [client]
 # Hide deploy, rerun, cache, and developer menu for all viewers (including Cloud owners).
 toolbarMode = "viewer"
+# Custom sidebar links via st.page_link; built-in st.navigation menu stays hidden.
+showSidebarNavigation = false
 
 [ui]
-# Hide the Streamlit top bar (running status, toolbar actions).
-hideTopBar = true
+# Keep false so the sidebar expand/collapse control stays available.
+hideTopBar = false
 
 [browser]
 gatherUsageStats = false

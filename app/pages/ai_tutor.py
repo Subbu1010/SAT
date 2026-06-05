@@ -2,6 +2,7 @@ import streamlit as st
 
 from app.services.gemini_service import GeminiService
 from app.services.rag_service import RAGService
+from app.utils.compact_layout import inject_compact_spacing
 
 SUGGESTED_PROMPTS = [
     "Explain how to solve linear equations for SAT Math.",
@@ -27,16 +28,17 @@ def _stream_gemini_response(gemini: GeminiService, prompt: str, context: str, ho
 
 
 def render():
+    inject_compact_spacing()
     st.title("AI Tutor")
     st.caption("Powered by Gemini (gemini-2.5-pro) with optional RAG context.")
 
     if "tutor_messages" not in st.session_state:
         st.session_state["tutor_messages"] = []
 
-    st.subheader("Suggested prompts")
-    cols = st.columns(2)
+    st.caption("Suggested prompts")
+    cols = st.columns(4)
     for i, suggestion in enumerate(SUGGESTED_PROMPTS):
-        if cols[i % 2].button(suggestion, key=f"suggest_{i}"):
+        if cols[i].button(suggestion, key=f"suggest_{i}", use_container_width=True):
             st.session_state["tutor_pending_prompt"] = suggestion
 
     for msg in st.session_state["tutor_messages"]:
