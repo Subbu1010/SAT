@@ -4,7 +4,6 @@ import streamlit as st
 
 from app.authentication.auth_service import AuthService
 from app.database.bootstrap import run_startup_bootstrap
-from app.utils.cloud_ui import apply_embed_view_for_non_admin
 from app.pages import admin, ai_tutor, analytics, dashboard, first_login_reset, mock_exam, practice
 
 st.set_page_config(page_title="SAT", page_icon="🎯", layout="wide")
@@ -64,8 +63,6 @@ def main():
     inject_css()
 
     auth = AuthService()
-    apply_embed_view_for_non_admin(auth)
-
     if not auth.is_logged_in() and not st.session_state.get("_cookie_restore_attempted"):
         auth.restore_from_cookies()
         st.session_state["_cookie_restore_attempted"] = True
