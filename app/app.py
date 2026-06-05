@@ -62,17 +62,26 @@ def render_logged_in_sidebar(auth: AuthService) -> None:
         st.rerun()
 
 
-def main():
+def _bootstrap_once() -> None:
+    """Run DB seed/bootstrap only once per browser session (not on every click)."""
+    if st.session_state.get("_bootstrap_done"):
+        return
     try:
         run_startup_bootstrap()
     except Exception:
         pass
+    st.session_state["_bootstrap_done"] = True
+
+
+def main():
+    _bootstrap_once()
 
     inject_css()
 
     auth = AuthService()
-    if not auth.is_logged_in():
+    if not auth.is_logged_in() and not st.session_state.get("_cookie_restore_attempted"):
         auth.restore_from_cookies()
+        st.session_state["_cookie_restore_attempted"] = True
 
     if auth.is_logged_in():
         render_logged_in_sidebar(auth)
@@ -82,8 +91,10 @@ def main():
             "Mock Exam": mock_exam.render,
             "Analytics": analytics.render,
             "AI Tutor": ai_tutor.render,
-            "Admin": admin.render,
         }
+        if auth.get_user_role() == "admin":
+            pages["Admin"] = admin.render
+
         selected = st.sidebar.radio("Navigation", list(pages.keys()))
         pages[selected]()
         return

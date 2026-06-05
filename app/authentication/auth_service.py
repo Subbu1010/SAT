@@ -11,6 +11,7 @@ from app.authentication.session_store import (
     save_session_tokens,
 )
 from app.database.supabase_client import get_supabase_client
+from app.services.login_history_service import log_login_event
 
 
 class AuthService:
@@ -47,10 +48,16 @@ class AuthService:
     def login(self, email: str, password: str, remember_me: bool = False):
         result = sign_in(email, password)
         if not result["ok"]:
+            log_login_event(email=email, status="failed")
             hint = result.get("hint", "")
             raise RuntimeError(f"{result['error']}. {hint}".strip())
 
         user = result["user"]
+        log_login_event(
+            user_id=user.id,
+            email=result.get("email") or email,
+            status="success",
+        )
         session = result.get("session")
         st.session_state["auth_user"] = user
         st.session_state["is_authenticated"] = True
@@ -91,6 +98,9 @@ class AuthService:
         ).execute()
 
     def logout(self):
+        user = self.current_user()
+        if user:
+            log_login_event(user_id=user.id, email=user.email or "", status="logout")
         try:
             self.client.auth.sign_out()
         except Exception:
@@ -117,17 +127,21 @@ class AuthService:
             st.warning("Please login to continue.")
             st.stop()
 
-    def require_role(self, allowed_roles: set[str]):
-        self.require_auth()
+    def get_user_role(self) -> str:
         user = self.current_user()
+        if not user:
+            return "student"
         role_row = (
             self.client.table("users").select("role").eq("user_id", user.id).limit(1).execute()
         )
-        role = (
+        return (
             role_row.data[0]["role"]
             if role_row.data
             else (user.user_metadata or {}).get("role", "student")
         )
-        if role not in allowed_roles:
+
+    def require_role(self, allowed_roles: set[str]):
+        self.require_auth()
+        if self.get_user_role() not in allowed_roles:
             st.error("You do not have access to this section.")
             st.stop()

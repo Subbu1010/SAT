@@ -28,6 +28,26 @@ class QuestionService:
             query = query.eq("topic", topic)
         return query.limit(limit).execute().data or []
 
+    def count_questions(
+        self,
+        exam_type: str,
+        subject: str,
+        difficulty: str | None = None,
+        topic: str | None = None,
+    ) -> int:
+        query = (
+            self.client.table("questions")
+            .select("question_id", count="exact")
+            .eq("exam_type", exam_type)
+            .eq("subject", subject)
+        )
+        if difficulty:
+            query = query.eq("difficulty", difficulty)
+        if topic:
+            query = query.eq("topic", topic)
+        result = query.execute()
+        return result.count or 0
+
     def save_attempt(
         self,
         user_id: str,

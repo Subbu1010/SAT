@@ -11,15 +11,20 @@ from app.utils.config import get_config
 
 _cache = TTLCache(maxsize=256, ttl=60 * 30)
 
+TUTOR_SYSTEM = (
+    "You are an expert SAT/PSAT tutor. Give accurate, step-by-step help for math, reading, "
+    "and writing. Use plain language, show reasoning, and include test-taking strategy when useful."
+)
+
 
 class GeminiService:
     def __init__(self):
         cfg = get_config()
         if not cfg.gemini_api_key:
-            raise RuntimeError("Missing GEMINI_API_KEY in env or Streamlit secrets.")
+            raise RuntimeError("Missing GEMINI_API_KEY in .env.")
         self.client = OpenAI(api_key=cfg.gemini_api_key, base_url=cfg.gemini_base_url)
         self.model = cfg.gemini_model
-        self.fallback_models = ["gemini-2.0-flash"]
+        self.fallback_models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]
         self._last_call_ts = 0.0
         self._min_interval_seconds = 0.5
 
@@ -36,16 +41,25 @@ class GeminiService:
             time.sleep(self._min_interval_seconds - elapsed)
         self._last_call_ts = time.time()
 
+    def _tutor_messages(self, user_prompt: str, context: str = "") -> list[dict]:
+        messages = [{"role": "system", "content": TUTOR_SYSTEM}]
+        if context.strip():
+            messages.append(
+                {"role": "system", "content": f"Relevant study context:\n{context}"}
+            )
+        messages.append({"role": "user", "content": user_prompt})
+        return messages
+
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=8),
         retry=retry_if_exception_type((APITimeoutError, APIConnectionError, RateLimitError, InternalServerError)),
     )
-    def _chat_completion(self, model: str, prompt: str):
+    def _chat_completion(self, model: str, messages: list[dict], temperature: float = 0.3):
         return self.client.chat.completions.create(
             model=model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.2,
+            messages=messages,
+            temperature=temperature,
         )
 
     @retry(
@@ -53,20 +67,32 @@ class GeminiService:
         wait=wait_exponential(multiplier=1, min=1, max=8),
         retry=retry_if_exception_type((APITimeoutError, APIConnectionError, RateLimitError, InternalServerError)),
     )
-    def _stream_completion(self, model: str, user_prompt: str, context: str = ""):
+    def _stream_completion(self, model: str, messages: list[dict], temperature: float = 0.3):
         return self.client.chat.completions.create(
             model=model,
+            messages=messages,
             stream=True,
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are a supportive SAT/PSAT tutor. Be accurate, concise, and step-by-step.",
-                },
-                {"role": "system", "content": f"Retrieved context: {context}"},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.3,
+            temperature=temperature,
         )
+
+    def _run_with_model_fallback(self, fn, messages: list[dict], **kwargs):
+        last_error: Exception | None = None
+        for model in self._candidate_models():
+            try:
+                return fn(model, messages, **kwargs)
+            except NotFoundError as exc:
+                last_error = exc
+                continue
+        raise RuntimeError(
+            f"No available Gemini model. Set GEMINI_MODEL=gemini-2.5-pro in .env. "
+            f"Tried: {', '.join(self._candidate_models())}"
+        ) from last_error
+
+    def tutor_reply(self, user_prompt: str, context: str = "") -> str:
+        self._rate_limit()
+        messages = self._tutor_messages(user_prompt, context)
+        completion = self._run_with_model_fallback(self._chat_completion, messages)
+        return completion.choices[0].message.content or ""
 
     def explain_question(self, question: str, options: list[str], answer: str, explanation: str) -> str:
         cache_key = f"{question}|{','.join(options)}|{answer}|{explanation}"
@@ -88,39 +114,27 @@ Return:
 5) SAT/PSAT strategy
 6) One additional practice tip
 """
-        completion = None
-        last_not_found: Exception | None = None
-        for model in self._candidate_models():
-            try:
-                completion = self._chat_completion(model, prompt)
-                break
-            except NotFoundError as exc:
-                last_not_found = exc
-                continue
-        if completion is None:
-            raise RuntimeError(
-                "No valid Gemini model found. Set GEMINI_MODEL in .env (for example: gemini-2.5-pro)."
-            ) from last_not_found
+        messages = [{"role": "user", "content": prompt}]
+        completion = self._run_with_model_fallback(
+            self._chat_completion, messages, temperature=0.2
+        )
         text = completion.choices[0].message.content or ""
         _cache[cache_key] = text
         return text
 
     def stream_tutor_response(self, user_prompt: str, context: str = "") -> Generator[str, None, None]:
         self._rate_limit()
-        response = None
-        last_not_found: Exception | None = None
-        for model in self._candidate_models():
-            try:
-                response = self._stream_completion(model, user_prompt, context=context)
-                break
-            except NotFoundError as exc:
-                last_not_found = exc
-                continue
-        if response is None:
-            raise RuntimeError(
-                "No valid Gemini model found for streaming responses. Update GEMINI_MODEL in .env."
-            ) from last_not_found
-        for chunk in response:
-            delta = chunk.choices[0].delta.content if chunk.choices else None
-            if delta:
-                yield delta
+        messages = self._tutor_messages(user_prompt, context)
+
+        try:
+            response = self._run_with_model_fallback(self._stream_completion, messages)
+            for chunk in response:
+                delta = chunk.choices[0].delta.content if chunk.choices else None
+                if delta:
+                    yield delta
+            return
+        except Exception:
+            # Streaming may fail for some models; fall back to full Gemini response.
+            text = self.tutor_reply(user_prompt, context=context)
+            if text:
+                yield text

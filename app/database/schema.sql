@@ -132,6 +132,10 @@ alter table public.practice_attempts enable row level security;
 alter table public.mock_exams enable row level security;
 alter table public.ai_conversations enable row level security;
 alter table public.performance_analytics enable row level security;
+alter table public.login_history enable row level security;
+
+-- Login history: only service role (admin app) should read/write via SUPABASE_SECRET_KEY.
+-- No client policies = anon/authenticated users cannot access directly.
 
 do $$ begin
   create policy "students_own_user_profile"

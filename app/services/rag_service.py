@@ -10,7 +10,13 @@ class RAGService:
         self.vectors = VectorService()
 
     def retrieve_context(self, prompt: str, k: int = 5) -> str:
-        emb = self.embedding.embed(prompt)
-        matches = self.vectors.semantic_search(emb, match_count=k).data or []
-        context_chunks = [m.get("content", "") for m in matches]
-        return "\n\n".join(context_chunks)
+        """Best-effort context retrieval. Returns empty string if RAG is unavailable."""
+        try:
+            emb = self.embedding.embed(prompt)
+            if not emb:
+                return ""
+            matches = self.vectors.semantic_search(emb, match_count=k).data or []
+            context_chunks = [m.get("content", "") for m in matches if m.get("content")]
+            return "\n\n".join(context_chunks)
+        except Exception:
+            return ""

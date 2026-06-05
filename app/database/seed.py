@@ -25,36 +25,25 @@ def _admin_client() -> Client | None:
         return None
 
 
-def _find_auth_user_id(client: Client, email: str) -> str | None:
-    try:
-        listed = client.auth.admin.list_users()
-        users = getattr(listed, "users", listed)
-        for user in users:
-            if getattr(user, "email", "").lower() == email.lower():
-                return user.id
-    except Exception:
-        pass
+def _user_id_for_email(client: Client, email: str) -> str | None:
+    """Fast lookup from public.users (avoids slow auth.admin.list_users)."""
+    row = client.table("users").select("user_id").eq("email", email).limit(1).execute()
+    if row.data:
+        return row.data[0]["user_id"]
     return None
 
 
 def _ensure_auth_user(client: Client, user: dict) -> tuple[str, bool]:
-    """Create or update auth user; returns (user_id, was_created)."""
+    """Create auth user if missing; returns (user_id, was_created)."""
     email = user["email"]
     metadata = {
         "first_name": user["first_name"],
         "last_name": user["last_name"],
         "role": user["role"],
     }
-    existing_id = _find_auth_user_id(client, email)
+
+    existing_id = _user_id_for_email(client, email)
     if existing_id:
-        client.auth.admin.update_user_by_id(
-            existing_id,
-            {
-                "password": DEFAULT_TEST_PASSWORD,
-                "email_confirm": True,
-                "user_metadata": metadata,
-            },
-        )
         return existing_id, False
 
     auth_resp = client.auth.admin.create_user(
@@ -73,20 +62,32 @@ def seed_test_users() -> tuple[bool, str]:
     if client is None:
         return False, f"User seed skipped: {_SECRET_KEY_HINT}"
 
+    test_emails = [u["email"] for u in TEST_USERS]
+    try:
+        existing = client.table("users").select("email").in_("email", test_emails).execute()
+        if len(existing.data or []) >= len(TEST_USERS):
+            return True, "Test users already loaded."
+    except Exception as exc:
+        if "relation" in str(exc).lower() or "does not exist" in str(exc).lower():
+            return False, f"User seed failed: tables missing. {_SCHEMA_HINT}"
+        return False, f"User seed failed: {exc}"
+
     created = 0
-    updated = 0
     for user in TEST_USERS:
         email = user["email"]
         try:
             user_id, was_created = _ensure_auth_user(client, user)
             if was_created:
                 created += 1
-            else:
-                updated += 1
         except Exception as exc:
-            if "relation" in str(exc).lower() or "does not exist" in str(exc).lower():
+            if "already" in str(exc).lower():
+                user_id = _user_id_for_email(client, email)
+                if not user_id:
+                    return False, f"User seed failed for {email}: {exc}"
+            elif "relation" in str(exc).lower() or "does not exist" in str(exc).lower():
                 return False, f"User seed failed: tables missing. {_SCHEMA_HINT}"
-            return False, f"User seed failed for {email}: {exc}"
+            else:
+                return False, f"User seed failed for {email}: {exc}"
 
         client.table("users").upsert(
             {
@@ -110,8 +111,7 @@ def seed_test_users() -> tuple[bool, str]:
                 ).execute()
 
     return True, (
-        f"Test users ready ({created} created, {updated} updated). "
-        f"Password: {DEFAULT_TEST_PASSWORD}"
+        f"Test users ready ({created} new). Password: {DEFAULT_TEST_PASSWORD}"
     )
 
 

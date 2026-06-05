@@ -61,6 +61,16 @@ class AppConfig:
         """Alias used by admin/seed operations (secret/service role key)."""
         return self.supabase_secret_key
 
+    @property
+    def openai_base_url(self) -> str:
+        """Backward-compatible alias for older modules."""
+        return self.gemini_base_url
+
+    @property
+    def openai_model(self) -> str:
+        """Backward-compatible alias for older modules."""
+        return self.gemini_model
+
 
 def get_config() -> AppConfig:
     supabase_url = _first_set("SUPABASE_URL")

@@ -54,35 +54,17 @@ def ensure_schema() -> tuple[bool, str]:
 
 def run_startup_bootstrap() -> list[tuple[str, str]]:
     """
-    Startup: verify API connection, optional Postgres schema, seed users/questions.
-    Works with only Supabase URL + publishable + secret API keys.
+    One-time startup: optional Postgres schema check + seed users/questions.
+    Called once per session from app.py (not on every widget click).
     """
     messages: list[tuple[str, str]] = []
     cfg = get_config()
 
-    messages.append(("success", f"Supabase API connected ({cfg.supabase_url})"))
-    if not cfg.supabase_secret_key:
-        messages.append(
-            (
-                "warning",
-                "SUPABASE_SECRET_KEY not set. User seeding and admin auth need the secret key.",
-            )
-        )
-    else:
-        try:
-            get_supabase_admin_client()
-            messages.append(("success", "Supabase secret key configured."))
-        except Exception as exc:
-            messages.append(("warning", f"Secret key check failed: {exc}"))
-
-    schema_ok, schema_msg = ensure_schema()
-    if schema_ok:
-        messages.append(("success", schema_msg))
-    else:
-        messages.append(("info", schema_msg))
-
-    if not cfg.supabase_db_url:
-        messages.append(("info", _POOLER_HINT))
+    if cfg.supabase_db_url:
+        schema_ok, schema_msg = ensure_schema()
+        messages.append(("success" if schema_ok else "info", schema_msg))
+    elif not _tables_exist():
+        messages.append(("info", f"Tables not found yet. {_SCHEMA_SQL_HINT}"))
 
     messages.extend(run_startup_seed())
     return messages

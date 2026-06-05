@@ -58,3 +58,14 @@
   color: var(--primary);
   margin-top: 0.5rem;
 }
+
+.tutor-typing {
+  color: var(--muted);
+  font-style: italic;
+  animation: tutor-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes tutor-pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
