@@ -6,7 +6,7 @@ from app.authentication.auth_service import AuthService
 from app.database.bootstrap import run_startup_bootstrap
 from app.pages import admin, ai_tutor, analytics, dashboard, first_login_reset, mock_exam, practice
 
-st.set_page_config(page_title="PSAT/SAT Adaptive Learning Platform", page_icon="🎯", layout="wide")
+st.set_page_config(page_title="SAT", page_icon="🎯", layout="wide")
 
 # Hide Share / Edit / GitHub / Deploy chrome on Streamlit Cloud and local dev.
 st.set_option("client.toolbarMode", "minimal")
