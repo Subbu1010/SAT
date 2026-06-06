@@ -7,7 +7,16 @@ from app.services.adaptive_engine import next_difficulty
 from app.services.gemini_service import GeminiService
 from app.services.question_service import QuestionService
 from app.utils.compact_layout import inject_compact_spacing
+from app.utils.page_session import returned_to_page
 from app.utils.question_shuffle import clear_shuffled_options, shuffled_options, shuffle_questions
+from app.utils.scoped_session import (
+    clear_scoped_prefix,
+    scoped_get,
+    scoped_has,
+    scoped_key,
+    scoped_pop,
+    scoped_set,
+)
 
 
 def _build_practice_queue(
@@ -62,30 +71,33 @@ def _ensure_practice_queue(
     pool_limit: int,
 ) -> list[dict]:
     queue_key = _practice_queue_key(filter_key, chosen_difficulty, difficulty_mode)
-    if st.session_state.get("practice_queue_key") != queue_key:
-        st.session_state["practice_queue_key"] = queue_key
-        st.session_state["practice_question_queue"] = _build_practice_queue(
-            qs,
-            exam_type=exam_type,
-            subject=subject,
-            topic=topic,
-            chosen_difficulty=chosen_difficulty,
-            difficulty_mode=difficulty_mode,
-            pool_limit=pool_limit,
+    if scoped_get("practice_queue_key") != queue_key:
+        scoped_set("practice_queue_key", queue_key)
+        scoped_set(
+            "practice_question_queue",
+            _build_practice_queue(
+                qs,
+                exam_type=exam_type,
+                subject=subject,
+                topic=topic,
+                chosen_difficulty=chosen_difficulty,
+                difficulty_mode=difficulty_mode,
+                pool_limit=pool_limit,
+            ),
         )
-        st.session_state["practice_queue_index"] = 0
-    return st.session_state.get("practice_question_queue", [])
+        scoped_set("practice_queue_index", 0)
+    return scoped_get("practice_question_queue", [])
 
 
 def _next_practice_question(queue: list[dict]) -> dict | None:
     if not queue:
         return None
-    index = st.session_state.get("practice_queue_index", 0)
+    index = scoped_get("practice_queue_index", 0)
     if index >= len(queue):
         random.shuffle(queue)
-        st.session_state["practice_question_queue"] = queue
+        scoped_set("practice_question_queue", queue)
         index = 0
-        st.session_state["practice_queue_index"] = 0
+        scoped_set("practice_queue_index", 0)
     return queue[index]
 
 
@@ -106,13 +118,22 @@ def _adaptive_status_message(results: list[bool]) -> str:
 
 def _clear_practice_question(question_id: str | None = None) -> None:
     if question_id:
-        clear_shuffled_options(f"practice_opts_{question_id}")
-    st.session_state.pop("practice_current_question", None)
-    st.session_state.pop("practice_feedback", None)
+        clear_shuffled_options(scoped_key(f"practice_opts_{question_id}"))
+    scoped_pop("practice_current_question", None)
+    scoped_pop("practice_feedback", None)
+
+
+def _reset_practice_session() -> None:
+    """Drop the in-progress queue so the next visit starts with fresh questions."""
+    scoped_pop("practice_queue_key", None)
+    scoped_pop("practice_question_queue", None)
+    scoped_pop("practice_queue_index", None)
+    _clear_practice_question()
+    clear_scoped_prefix("practice_opts_")
 
 
 def _advance_practice_queue() -> None:
-    st.session_state["practice_queue_index"] = st.session_state.get("practice_queue_index", 0) + 1
+    scoped_set("practice_queue_index", scoped_get("practice_queue_index", 0) + 1)
 
 
 def _render_feedback(question: dict, feedback: dict) -> None:
@@ -130,34 +151,34 @@ def _render_feedback(question: dict, feedback: dict) -> None:
 
 def render():
     inject_compact_spacing()
+    if returned_to_page("practice"):
+        _reset_practice_session()
+
     st.title("Practice Questions")
     qs = QuestionService()
-    if "practice_results" not in st.session_state:
-        st.session_state["practice_results"] = []
-    if "adaptive_difficulty" not in st.session_state:
-        st.session_state["adaptive_difficulty"] = "Medium"
+    if not scoped_has("practice_results"):
+        scoped_set("practice_results", [])
+    if not scoped_has("adaptive_difficulty"):
+        scoped_set("adaptive_difficulty", "Medium")
 
     filter_col1, filter_col2, filter_col3 = st.columns(3)
     with filter_col1:
         exam_type = st.selectbox("Exam Type", ["SAT", "PSAT", "PSAT 8/9"])
     with filter_col2:
         subject = st.selectbox("Subject", ["Math", "Reading", "Writing"])
-    if st.session_state.get("practice_subject") != subject:
-        st.session_state["practice_subject"] = subject
-        for key in list(st.session_state.keys()):
-            if key.startswith("topics_"):
-                del st.session_state[key]
+    if scoped_get("practice_subject") != subject:
+        scoped_set("practice_subject", subject)
+        clear_scoped_prefix("topics_")
         _clear_practice_question()
 
-    cache_key = f"topics_{subject}"
-    if cache_key not in st.session_state:
-        st.session_state[cache_key] = qs.topics_for_subject(subject) or [
-            "Algebra",
-            "Geometry",
-            "Vocabulary",
-            "Grammar",
-        ]
-    topics = st.session_state[cache_key]
+    topics_key = f"topics_{subject}"
+    if not scoped_has(topics_key):
+        scoped_set(
+            topics_key,
+            qs.topics_for_subject(subject)
+            or ["Algebra", "Geometry", "Vocabulary", "Grammar"],
+        )
+    topics = scoped_get(topics_key)
     with filter_col3:
         topic = st.selectbox("Topic", ["All"] + topics)
 
@@ -168,31 +189,31 @@ def render():
         if not difficulty_mode:
             chosen_difficulty = st.selectbox("Difficulty", ["Easy", "Medium", "Hard"])
         else:
-            chosen_difficulty = st.session_state["adaptive_difficulty"]
+            chosen_difficulty = scoped_get("adaptive_difficulty")
 
     filter_key = (exam_type, subject, topic)
     topic_filter = None if topic == "All" else topic
-    if st.session_state.get("practice_filter_key") != filter_key:
-        st.session_state["practice_filter_key"] = filter_key
-        st.session_state["practice_results"] = []
-        st.session_state["adaptive_difficulty"] = "Medium"
-        st.session_state.pop("practice_queue_key", None)
-        st.session_state.pop("practice_question_queue", None)
-        st.session_state.pop("practice_queue_index", None)
+    if scoped_get("practice_filter_key") != filter_key:
+        scoped_set("practice_filter_key", filter_key)
+        scoped_set("practice_results", [])
+        scoped_set("adaptive_difficulty", "Medium")
+        scoped_pop("practice_queue_key", None)
+        scoped_pop("practice_question_queue", None)
+        scoped_pop("practice_queue_index", None)
         _clear_practice_question()
 
     if difficulty_mode:
-        prev_difficulty = st.session_state.get("practice_adaptive_difficulty")
+        prev_difficulty = scoped_get("practice_adaptive_difficulty")
         if prev_difficulty is not None and prev_difficulty != chosen_difficulty:
-            st.session_state.pop("practice_queue_key", None)
+            scoped_pop("practice_queue_key", None)
             _clear_practice_question()
-        st.session_state["practice_adaptive_difficulty"] = chosen_difficulty
+        scoped_set("practice_adaptive_difficulty", chosen_difficulty)
     else:
-        prev_difficulty = st.session_state.get("practice_manual_difficulty")
+        prev_difficulty = scoped_get("practice_manual_difficulty")
         if prev_difficulty is not None and prev_difficulty != chosen_difficulty:
-            st.session_state.pop("practice_queue_key", None)
+            scoped_pop("practice_queue_key", None)
             _clear_practice_question()
-        st.session_state["practice_manual_difficulty"] = chosen_difficulty
+        scoped_set("practice_manual_difficulty", chosen_difficulty)
 
     pool_limit = 10_000
     total_available = qs.count_questions(
@@ -212,7 +233,7 @@ def render():
         f"Difficulty: {chosen_difficulty}",
     ]
     if difficulty_mode:
-        meta_parts.append(_adaptive_status_message(st.session_state["practice_results"]))
+        meta_parts.append(_adaptive_status_message(scoped_get("practice_results", [])))
     st.caption(" · ".join(meta_parts))
 
     queue = _ensure_practice_queue(
@@ -229,16 +250,19 @@ def render():
         st.info("No questions match the current filters.")
         return
 
-    if "practice_current_question" not in st.session_state:
-        st.session_state["practice_current_question"] = _next_practice_question(queue)
+    if not scoped_has("practice_current_question"):
+        scoped_set("practice_current_question", _next_practice_question(queue))
 
-    question = st.session_state["practice_current_question"]
+    question = scoped_get("practice_current_question")
     if not question:
         st.info("No questions available.")
         return
 
-    display_options = shuffled_options(question, session_key=f"practice_opts_{question['question_id']}")
-    feedback = st.session_state.get("practice_feedback")
+    display_options = shuffled_options(
+        question,
+        session_key=scoped_key(f"practice_opts_{question['question_id']}"),
+    )
+    feedback = scoped_get("practice_feedback")
 
     if feedback and feedback.get("question_id") == question["question_id"]:
         st.markdown('<div class="card question-card">', unsafe_allow_html=True)
@@ -261,21 +285,26 @@ def render():
                 st.warning("Please select an answer before submitting.")
             else:
                 is_correct = selected == question["answer"]
-                st.session_state["practice_feedback"] = {
-                    "question_id": question["question_id"],
-                    "selected": selected,
-                    "is_correct": is_correct,
-                }
+                scoped_set(
+                    "practice_feedback",
+                    {
+                        "question_id": question["question_id"],
+                        "selected": selected,
+                        "is_correct": is_correct,
+                    },
+                )
                 user = st.session_state.get("auth_user")
                 if user:
                     qs.save_attempt(
                         user.id, question["question_id"], selected, is_correct, time_spent=60
                     )
                 if difficulty_mode:
-                    st.session_state["practice_results"].append(is_correct)
-                    st.session_state["adaptive_difficulty"] = next_difficulty(
-                        st.session_state["practice_results"],
-                        st.session_state["adaptive_difficulty"],
+                    results = list(scoped_get("practice_results", []))
+                    results.append(is_correct)
+                    scoped_set("practice_results", results)
+                    scoped_set(
+                        "adaptive_difficulty",
+                        next_difficulty(results, scoped_get("adaptive_difficulty")),
                     )
                 st.rerun()
 
@@ -297,4 +326,3 @@ def render():
                     "Please verify GEMINI_API_KEY and OPENAI_MODEL in your .env."
                 )
                 st.caption(f"Technical details: {exc}")
-

@@ -7,7 +7,8 @@ from dotenv import load_dotenv
 
 # Load .env from project root reliably, regardless of launch directory.
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-load_dotenv(PROJECT_ROOT / ".env")
+# Override stale host env vars so local/repo .env stays authoritative in dev.
+load_dotenv(PROJECT_ROOT / ".env", override=True)
 
 
 def _strip_quotes(value: str | None) -> str | None:
@@ -19,17 +20,48 @@ def _strip_quotes(value: str | None) -> str | None:
     return value
 
 
-def _from_secret_or_env(key: str, default: str | None = None) -> str | None:
-    env_value = _strip_quotes(os.environ.get(key))
-    if env_value:
-        return env_value
+def _app_env() -> str:
+    return _strip_quotes(os.environ.get("APP_ENV")) or "development"
 
+
+def _from_secrets(key: str) -> str | None:
     try:
         if hasattr(st, "secrets") and key in st.secrets:
             return _strip_quotes(str(st.secrets[key]))
     except Exception:
+        pass
+    return None
+
+
+def _from_secret_or_env(key: str, default: str | None = None) -> str | None:
+    env_value = _strip_quotes(os.environ.get(key))
+
+    # Local dev: .env (loaded above) wins over Streamlit's cached secrets snapshot.
+    if _app_env() == "development":
+        if env_value:
+            return env_value
+        secret_value = _from_secrets(key)
+        if secret_value:
+            return secret_value
         return default
+
+    # Production / Streamlit Cloud: explicit secrets.toml wins.
+    secret_value = _from_secrets(key)
+    if secret_value:
+        return secret_value
+    if env_value:
+        return env_value
     return default
+
+
+def supabase_key_fingerprint() -> str:
+    """Masked publishable key prefix for auth troubleshooting."""
+    publishable = _first_set("SUPABASE_PUBLISHABLE_KEY", "SUPABASE_KEY") or ""
+    if not publishable:
+        return "<missing publishable key>"
+    if len(publishable) <= 16:
+        return "*" * len(publishable)
+    return f"{publishable[:14]}...{publishable[-6:]}"
 
 
 def _first_set(*keys: str) -> str | None:

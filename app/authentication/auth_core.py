@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from app.database.supabase_client import get_supabase_client
+from app.utils.config import supabase_key_fingerprint
+
 
 INVALID_CREDENTIALS = "Invalid login credentials"
 
@@ -28,6 +30,19 @@ def sign_in(email: str, password: str) -> dict:
                 "hint": (
                     "Test accounts may not be seeded yet. Restart the app after setting "
                     "SUPABASE_SECRET_KEY, or run: python scripts/validate_auth.py"
+                ),
+            }
+        if "unregistered api key" in message.lower():
+            return {
+                "ok": False,
+                "error": "Unregistered API key",
+                "hint": (
+                    "This is not a wrong password — Supabase rejected the API key loaded by the app. "
+                    f"Active publishable key: {supabase_key_fingerprint()}. "
+                    "Local fix: save .env, fully stop Streamlit (Ctrl+C), and restart "
+                    "`python -m streamlit run streamlit_app.py`. "
+                    "Cloud fix: update Streamlit App settings → Secrets with keys from "
+                    "Supabase Dashboard → Settings → API Keys, then reboot the app."
                 ),
             }
         return {"ok": False, "error": message}
