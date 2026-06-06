@@ -9,6 +9,8 @@ import extra_streamlit_components as stx
 import streamlit as st
 from supabase import Client
 
+from app.utils.user_session import ensure_user_session_scope
+
 COOKIE_ACCESS = "sat_access_token"
 COOKIE_REFRESH = "sat_refresh_token"
 
@@ -89,6 +91,7 @@ def restore_session(client: Client) -> bool:
     if response.session:
         st.session_state["auth_access_token"] = response.session.access_token
         st.session_state["auth_refresh_token"] = response.session.refresh_token
+    ensure_user_session_scope(response.user.id)
     return True
 
 

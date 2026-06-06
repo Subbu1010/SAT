@@ -13,7 +13,10 @@ from app.components.sidebar import (
     render_sidebar_nav,
 )
 from app.database.bootstrap import run_startup_bootstrap
+from app.utils.page_session import remember_rendered_url
 from app.utils.sidebar_reopen import inject_sidebar_reopen_fab
+from app.utils.theme import inject_app_theme
+from app.utils.user_session import ensure_user_session_scope
 from app.pages import first_login_reset
 
 st.set_page_config(
@@ -47,6 +50,7 @@ def main():
     _bootstrap_once()
 
     inject_css()
+    inject_app_theme()
     inject_sidebar_reopen_fab()
 
     auth = AuthService()
@@ -55,6 +59,10 @@ def main():
         st.session_state["_cookie_restore_attempted"] = True
 
     if auth.is_logged_in():
+        user = auth.current_user()
+        if user:
+            ensure_user_session_scope(user.id)
+
         if auth.must_reset_password():
             render_password_reset_sidebar(auth)
             first_login_reset.render()
@@ -70,6 +78,7 @@ def main():
             render_sidebar_footer(auth)
 
         navigation.run()
+        remember_rendered_url()
         return
 
     render_guest_sidebar(auth)

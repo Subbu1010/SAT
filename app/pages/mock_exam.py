@@ -4,6 +4,11 @@ import pandas as pd
 import streamlit as st
 
 from app.authentication.auth_service import AuthService
+from app.components.answer_selector import (
+    answer_from_widget,
+    render_answer_selector,
+    restore_answer_widget,
+)
 from app.services.mock_exam_service import (
     DEFAULT_QUESTIONS_PER_SUBJECT,
     build_mock_exam,
@@ -13,6 +18,7 @@ from app.services.mock_exam_service import (
 )
 from app.utils.compact_layout import inject_compact_spacing
 from app.utils.question_shuffle import shuffled_options
+from app.utils.scoped_session import scoped_has, scoped_key, uss
 
 DEFAULT_DURATION = 60 * 60
 
@@ -24,6 +30,8 @@ def _init_state() -> None:
         "exam_start_ts": None,
         "exam_end_ts": None,
         "exam_duration": DEFAULT_DURATION,
+        "exam_duration_total": DEFAULT_DURATION,
+        "exam_remaining_secs": DEFAULT_DURATION,
         "exam_type": "SAT",
         "exam_questions": [],
         "exam_index": 0,
@@ -32,50 +40,121 @@ def _init_state() -> None:
         "exam_results": None,
     }
     for key, value in defaults.items():
-        if key not in st.session_state:
-            st.session_state[key] = value
+        if key not in uss:
+            uss[key] = value
 
 
-def _start_exam(exam_type: str) -> bool:
+def _exam_in_progress() -> bool:
+    return bool(uss.get("exam_questions")) and not uss.get("exam_finished")
+
+
+def _remaining_seconds() -> int:
+    if uss.get("exam_running") and uss.get("exam_end_ts"):
+        return max(0, int(uss["exam_end_ts"] - time.time()))
+    return int(uss.get("exam_remaining_secs") or uss.get("exam_duration") or 0)
+
+
+def _format_time(seconds: int) -> str:
+    return f"{seconds // 60:02d}:{seconds % 60:02d}"
+
+
+def _maybe_finish_expired_exam() -> bool:
+    """Auto-submit when the timer hits zero (including after navigating away)."""
+    if not _exam_in_progress() or not uss.get("exam_running") or not uss.get("exam_end_ts"):
+        return False
+    if time.time() >= uss["exam_end_ts"]:
+        _finish_exam()
+        return True
+    return False
+
+
+def _start_exam(exam_type: str, duration_secs: int) -> bool:
     questions = build_mock_exam(exam_type)
     if not questions:
         return False
 
-    st.session_state["exam_type"] = exam_type
-    st.session_state["exam_questions"] = questions
-    st.session_state["exam_index"] = 0
-    st.session_state["exam_answers"] = {}
-    st.session_state["exam_flagged"] = []
-    st.session_state["exam_results"] = None
-    st.session_state["exam_finished"] = False
-    st.session_state["exam_running"] = True
-    st.session_state["exam_start_ts"] = time.time()
-    st.session_state["exam_end_ts"] = time.time() + st.session_state["exam_duration"]
+    uss["exam_type"] = exam_type
+    uss["exam_questions"] = questions
+    uss["exam_index"] = 0
+    uss["exam_answers"] = {}
+    uss["exam_flagged"] = []
+    uss["exam_results"] = None
+    uss["exam_finished"] = False
+    uss["exam_duration_total"] = duration_secs
+    uss["exam_duration"] = duration_secs
+    uss["exam_remaining_secs"] = duration_secs
+    uss["exam_running"] = True
+    uss["exam_start_ts"] = time.time()
+    uss["exam_end_ts"] = time.time() + duration_secs
     return True
+
+
+def _resume_exam() -> None:
+    remaining = _remaining_seconds()
+    if remaining <= 0:
+        _finish_exam()
+        return
+    uss["exam_remaining_secs"] = remaining
+    uss["exam_duration"] = remaining
+    uss["exam_running"] = True
+    uss["exam_end_ts"] = time.time() + remaining
+
+
+def _pause_exam() -> None:
+    if uss.get("exam_questions"):
+        _sync_exam_answers(uss["exam_questions"])
+    remaining = _remaining_seconds()
+    uss["exam_remaining_secs"] = remaining
+    uss["exam_duration"] = remaining
+    uss["exam_running"] = False
+    uss["exam_end_ts"] = None
+
+
+def _restore_exam_answer_widgets(questions: list[dict]) -> None:
+    """Seed radio widget keys from persisted answers (survives page navigation)."""
+    answers = dict(uss.get("exam_answers") or {})
+    if not answers:
+        return
+    for question in questions:
+        qid = question["question_id"]
+        saved = answers.get(qid)
+        if not saved:
+            continue
+        options = shuffled_options(
+            question,
+            session_key=scoped_key(f"exam_opts_{qid}"),
+        )
+        if saved not in options:
+            continue
+        restore_answer_widget(scoped_key(f"exam_ans_{qid}"), options, saved)
 
 
 def _sync_exam_answers(questions: list[dict]) -> dict[str, str]:
     """Merge saved answers with any in-progress widget selections."""
-    answers = dict(st.session_state.get("exam_answers", {}))
+    answers = dict(uss.get("exam_answers", {}))
     for question in questions:
         qid = question["question_id"]
-        widget_key = f"exam_ans_{qid}"
-        if widget_key in st.session_state and st.session_state[widget_key]:
-            answers[qid] = st.session_state[widget_key]
-    st.session_state["exam_answers"] = answers
+        widget_key = scoped_key(f"exam_ans_{qid}")
+        if widget_key in st.session_state:
+            opts_key = scoped_key(f"exam_opts_{qid}")
+            options = list(st.session_state.get(opts_key) or [])
+            picked = answer_from_widget(options, st.session_state[widget_key])
+            if picked:
+                answers[qid] = picked
+    uss["exam_answers"] = answers
     return answers
 
 
 def _finish_exam() -> None:
-    questions = st.session_state["exam_questions"]
+    questions = uss["exam_questions"]
     answers = _sync_exam_answers(questions)
     results = score_exam(
         questions,
         answers,
-        exam_type=st.session_state.get("exam_type", "SAT"),
+        exam_type=uss.get("exam_type", "SAT"),
     )
     duration = elapsed_seconds(
-        st.session_state["exam_start_ts"] or time.time(),
+        uss["exam_start_ts"] or time.time(),
         time.time(),
     )
 
@@ -86,14 +165,14 @@ def _finish_exam() -> None:
         except Exception as exc:
             st.warning(f"Could not save exam results: {exc}")
 
-    st.session_state["exam_results"] = {
+    uss["exam_results"] = {
         **results,
         "duration": duration,
-        "exam_type": st.session_state.get("exam_type", "SAT"),
+        "exam_type": uss.get("exam_type", "SAT"),
     }
-    st.session_state["exam_running"] = False
-    st.session_state["exam_finished"] = True
-    st.session_state["exam_index"] = 0
+    uss["exam_running"] = False
+    uss["exam_finished"] = True
+    uss["exam_index"] = 0
 
 
 def _status_label(status: str) -> str:
@@ -122,7 +201,7 @@ def _render_question_review(results: dict) -> None:
         "Filter",
         ["All", "Correct", "Incorrect", "Unanswered"],
         horizontal=True,
-        key="exam_review_filter",
+        key=scoped_key("exam_review_filter"),
     )
     filter_map = {
         "Correct": "correct",
@@ -163,13 +242,17 @@ def _render_question_review(results: dict) -> None:
 
 
 def _render_results() -> None:
-    results = st.session_state["exam_results"]
+    results = uss["exam_results"]
     if not results:
         st.warning("Exam ended but results are unavailable. Please start a new exam.")
-        if st.button("Start new exam", key="recover_new_exam"):
-            st.session_state["exam_finished"] = False
-            st.session_state["exam_results"] = None
-            st.session_state["exam_questions"] = []
+        if st.button("Start new exam", key=scoped_key("recover_new_exam")):
+            uss["exam_finished"] = False
+            uss["exam_results"] = None
+            uss["exam_questions"] = []
+            uss["exam_running"] = False
+            uss["exam_end_ts"] = None
+            uss["exam_remaining_secs"] = DEFAULT_DURATION
+            uss["exam_duration_total"] = DEFAULT_DURATION
             st.rerun()
         return
 
@@ -182,7 +265,7 @@ def _render_results() -> None:
     score_min = results.get("score_min", 400)
     score_max = results.get("score_max", 1600)
     sat_per_q = results.get("sat_per_question_max", 0)
-    exam_type = results.get("exam_type", st.session_state.get("exam_type", "SAT"))
+    exam_type = results.get("exam_type", uss.get("exam_type", "SAT"))
 
     st.success("Exam complete!")
     st.markdown(
@@ -247,11 +330,15 @@ def _render_results() -> None:
     _render_question_review(results)
 
     if st.button("Start new exam"):
-        st.session_state["exam_finished"] = False
-        st.session_state["exam_results"] = None
-        st.session_state["exam_questions"] = []
-        st.session_state["exam_answers"] = {}
-        st.session_state["exam_flagged"] = []
+        uss["exam_finished"] = False
+        uss["exam_results"] = None
+        uss["exam_questions"] = []
+        uss["exam_answers"] = {}
+        uss["exam_flagged"] = []
+        uss["exam_running"] = False
+        uss["exam_end_ts"] = None
+        uss["exam_remaining_secs"] = DEFAULT_DURATION
+        uss["exam_duration_total"] = DEFAULT_DURATION
         st.rerun()
 
 
@@ -263,7 +350,7 @@ def _question_index(questions: list[dict], question_id: str) -> int | None:
 
 
 def _flagged_indices(questions: list[dict]) -> list[int]:
-    flagged_ids = set(st.session_state["exam_flagged"])
+    flagged_ids = set(uss["exam_flagged"])
     return [
         idx
         for idx, question in enumerate(questions)
@@ -272,7 +359,7 @@ def _flagged_indices(questions: list[dict]) -> list[int]:
 
 
 def _render_flagged_panel(questions: list[dict]) -> None:
-    flagged_ids = st.session_state["exam_flagged"]
+    flagged_ids = uss["exam_flagged"]
     if not flagged_ids:
         st.info("No flagged questions yet. Flag a question, then use **Review flagged only** to review them.")
         return
@@ -284,7 +371,7 @@ def _render_flagged_panel(questions: list[dict]) -> None:
             if idx is None:
                 continue
             question = questions[idx]
-            answer = st.session_state["exam_answers"].get(qid)
+            answer = uss["exam_answers"].get(qid)
             status = f"Answered: {answer}" if answer else "Unanswered"
             preview = question.get("question_text", "")
             if len(preview) > 100:
@@ -299,8 +386,8 @@ def _render_flagged_panel(questions: list[dict]) -> None:
                     f"*{status}*"
                 )
             with col_go:
-                if st.button("Go", key=f"goto_flag_{qid}"):
-                    st.session_state["exam_index"] = idx
+                if st.button("Go", key=scoped_key(f"goto_flag_{qid}")):
+                    uss["exam_index"] = idx
                     st.rerun()
             st.divider()
 
@@ -321,21 +408,21 @@ def _nav_button_label(
 
 
 def _render_question_nav(questions: list[dict], total: int) -> None:
-    flagged_only = st.session_state.get("exam_review_flagged_only", False)
+    flagged_only = uss.get("exam_review_flagged_only", False)
     flagged_idxs = _flagged_indices(questions)
     if flagged_only:
         if not flagged_idxs:
             st.caption("Flag at least one question to use review mode.")
             return
-        if st.session_state["exam_index"] not in flagged_idxs:
-            st.session_state["exam_index"] = flagged_idxs[0]
+        if uss["exam_index"] not in flagged_idxs:
+            uss["exam_index"] = flagged_idxs[0]
             st.rerun()
 
     display_indices = flagged_idxs if flagged_only else list(range(len(questions)))
     nav_disabled = not questions or (flagged_only and not flagged_idxs)
-    flagged_ids = set(st.session_state["exam_flagged"])
-    answers = st.session_state["exam_answers"]
-    current = st.session_state["exam_index"]
+    flagged_ids = set(uss["exam_flagged"])
+    answers = uss["exam_answers"]
+    current = uss["exam_index"]
     n = len(display_indices)
 
     st.markdown(
@@ -375,69 +462,75 @@ def _render_question_nav(questions: list[dict], total: int) -> None:
     )
     cols = st.columns([1] + [1] * n + [1])
     with cols[0]:
-        if st.button("◀", key="exam_prev", disabled=nav_disabled, use_container_width=True):
+        if st.button("◀", key=scoped_key("exam_prev"), disabled=nav_disabled, use_container_width=True):
             if flagged_only and flagged_idxs:
                 if current not in flagged_idxs:
-                    st.session_state["exam_index"] = flagged_idxs[-1]
+                    uss["exam_index"] = flagged_idxs[-1]
                 else:
                     pos = flagged_idxs.index(current)
                     if pos > 0:
-                        st.session_state["exam_index"] = flagged_idxs[pos - 1]
+                        uss["exam_index"] = flagged_idxs[pos - 1]
             elif current > 0:
-                st.session_state["exam_index"] = current - 1
+                uss["exam_index"] = current - 1
             st.rerun()
 
     for i, idx in enumerate(display_indices):
         with cols[i + 1]:
             if st.button(
                 _nav_button_label(idx, questions, flagged_ids, answers),
-                key=f"nav_q_{idx}",
+                key=scoped_key(f"nav_q_{idx}"),
                 type="primary" if idx == current else "secondary",
                 use_container_width=False,
             ):
-                st.session_state["exam_index"] = idx
+                uss["exam_index"] = idx
                 st.rerun()
 
     with cols[-1]:
-        if st.button("▶", key="exam_next", disabled=nav_disabled, use_container_width=True):
+        if st.button("▶", key=scoped_key("exam_next"), disabled=nav_disabled, use_container_width=True):
             if flagged_only and flagged_idxs:
                 if current not in flagged_idxs:
-                    st.session_state["exam_index"] = flagged_idxs[0]
+                    uss["exam_index"] = flagged_idxs[0]
                 else:
                     pos = flagged_idxs.index(current)
                     if pos < len(flagged_idxs) - 1:
-                        st.session_state["exam_index"] = flagged_idxs[pos + 1]
+                        uss["exam_index"] = flagged_idxs[pos + 1]
             elif current < total - 1:
-                st.session_state["exam_index"] = current + 1
+                uss["exam_index"] = current + 1
             st.rerun()
 
 
+@st.fragment(run_every=1)
+def _exam_timer_tick() -> None:
+    """Refresh the countdown every second while the exam is running."""
+    if not uss.get("exam_running") or not _exam_in_progress():
+        return
+    if _maybe_finish_expired_exam():
+        st.rerun(scope="app")
+    remaining = _remaining_seconds()
+    total = uss.get("exam_duration_total") or uss.get("exam_duration") or DEFAULT_DURATION
+    if total > 0:
+        st.progress(
+            1 - (remaining / total),
+            text=f"Time remaining: {_format_time(remaining)}",
+        )
+
+
 def _render_active_exam() -> None:
-    questions = st.session_state["exam_questions"]
+    questions = uss["exam_questions"]
     if not questions:
         st.warning("No questions loaded for this exam.")
         return
 
-    if st.session_state["exam_running"] and st.session_state["exam_end_ts"]:
-        remaining = max(0, int(st.session_state["exam_end_ts"] - time.time()))
-        if remaining == 0:
-            _finish_exam()
-            st.rerun()
-            return
+    _restore_exam_answer_widgets(questions)
+    _exam_timer_tick()
 
-        progress = 1 - (remaining / st.session_state["exam_duration"])
-        st.progress(
-            progress,
-            text=f"Time remaining: {remaining // 60:02d}:{remaining % 60:02d}",
-        )
-
-    index = st.session_state["exam_index"]
+    index = uss["exam_index"]
     question = questions[index]
     qid = question["question_id"]
     total = len(questions)
 
-    answered = len(st.session_state["exam_answers"])
-    flagged_count = len(st.session_state["exam_flagged"])
+    answered = len(uss["exam_answers"])
+    flagged_count = len(uss["exam_flagged"])
     remaining = total - answered
     cap_col, flag_col = st.columns([5, 1])
     with cap_col:
@@ -449,11 +542,11 @@ def _render_active_exam() -> None:
     with flag_col:
         st.checkbox(
             "Flagged only",
-            key="exam_review_flagged_only",
+            key=scoped_key("exam_review_flagged_only"),
             help="Navigator shows flagged questions only; Previous/Next move between them.",
         )
     _render_question_nav(questions, total)
-    if st.session_state.get("exam_review_flagged_only"):
+    if uss.get("exam_review_flagged_only"):
         _render_flagged_panel(questions)
 
     st.markdown('<div class="card question-card">', unsafe_allow_html=True)
@@ -462,24 +555,29 @@ def _render_active_exam() -> None:
         with st.expander("Passage"):
             st.write(question["passage"])
 
-    options = shuffled_options(question, session_key=f"exam_opts_{qid}")
+    options = shuffled_options(question, session_key=scoped_key(f"exam_opts_{qid}"))
     if options:
-        selected = st.radio(
-            "Choose your answer",
+        widget_key = scoped_key(f"exam_ans_{qid}")
+        saved = (uss.get("exam_answers") or {}).get(qid)
+        selected = render_answer_selector(
             options,
-            key=f"exam_ans_{qid}",
-            index=None,
+            widget_key=widget_key,
+            saved=saved,
         )
         if selected:
-            st.session_state["exam_answers"][qid] = selected
+            answers = dict(uss.get("exam_answers") or {})
+            answers[qid] = selected
+            uss["exam_answers"] = answers
+
+    _sync_exam_answers(questions)
 
     flag_col, _ = st.columns([1, 3])
-    flagged = qid in st.session_state["exam_flagged"]
-    if flag_col.button("Unflag" if flagged else "Flag", key=f"exam_flag_{qid}"):
+    flagged = qid in uss["exam_flagged"]
+    if flag_col.button("Unflag" if flagged else "Flag", key=scoped_key(f"exam_flag_{qid}")):
         if flagged:
-            st.session_state["exam_flagged"].remove(qid)
+            uss["exam_flagged"].remove(qid)
         else:
-            st.session_state["exam_flagged"].append(qid)
+            uss["exam_flagged"].append(qid)
         st.rerun()
 
     st.markdown("</div>", unsafe_allow_html=True)
@@ -490,60 +588,80 @@ def render():
     st.title("Timed Mock Exam")
     _init_state()
 
-    if st.session_state["exam_finished"] and st.session_state["exam_results"]:
+    if uss["exam_finished"] and uss["exam_results"]:
         _render_results()
         return
 
-    if not st.session_state["exam_running"]:
+    if _maybe_finish_expired_exam():
+        st.rerun()
+        return
+
+    in_progress = _exam_in_progress()
+    running = bool(uss.get("exam_running"))
+
+    if in_progress:
+        questions = uss.get("exam_questions") or []
+        if questions:
+            _restore_exam_answer_widgets(questions)
+            _sync_exam_answers(questions)
+
+    if not in_progress:
         setup_col1, setup_col2 = st.columns(2)
         with setup_col1:
-            st.session_state["exam_type"] = st.selectbox(
+            uss["exam_type"] = st.selectbox(
                 "Exam Type",
                 ["SAT", "PSAT", "PSAT 8/9"],
-                index=["SAT", "PSAT", "PSAT 8/9"].index(st.session_state["exam_type"]),
+                index=["SAT", "PSAT", "PSAT 8/9"].index(uss["exam_type"]),
             )
         with setup_col2:
             duration_mins = st.selectbox("Duration (min)", [30, 45, 60], index=2)
-        st.session_state["exam_duration"] = duration_mins * 60
+        setup_duration_secs = duration_mins * 60
         st.caption(
             f"Up to {DEFAULT_QUESTIONS_PER_SUBJECT} questions per subject "
             f"({DEFAULT_QUESTIONS_PER_SUBJECT * 3} total, shuffled)"
         )
+    else:
+        answered = len(uss.get("exam_answers", {}))
+        total_q = len(uss.get("exam_questions", []))
+        progress_bits = [
+            f"{uss.get('exam_type', 'SAT')} mock exam in progress",
+            f"{answered}/{total_q} answered",
+        ]
+        if not running:
+            progress_bits.append(f"time remaining {_format_time(_remaining_seconds())}")
+        st.caption(" — ".join(progress_bits))
+        if not running:
+            st.info(
+                f"Exam paused. Time remaining: **{_format_time(_remaining_seconds())}**. "
+                "Click **Resume Test** to continue. You can leave this page and return later — "
+                "your progress and remaining time are saved."
+            )
 
     c1, c2, c3 = st.columns(3)
-    if c1.button("Start Test", type="primary"):
-        paused_with_questions = (
-            st.session_state["exam_questions"]
-            and not st.session_state["exam_running"]
-            and not st.session_state["exam_finished"]
-        )
-        if paused_with_questions:
-            st.session_state["exam_running"] = True
-            st.session_state["exam_end_ts"] = time.time() + st.session_state["exam_duration"]
+    if running:
+        c1.button("Start Test", type="primary", disabled=True)
+        if c2.button("Pause"):
+            _pause_exam()
             st.rerun()
-        elif _start_exam(st.session_state["exam_type"]):
+    elif in_progress:
+        if c1.button("Resume Test", type="primary"):
+            _resume_exam()
             st.rerun()
-        else:
-            st.error(
-                "No questions found for this exam type. "
-                "Run `python scripts/seed_bulk_questions.py` or use Admin → Seed practice bank."
-            )
-    if c2.button("Pause", disabled=not st.session_state["exam_running"]):
-        st.session_state["exam_running"] = False
-        if st.session_state["exam_end_ts"]:
-            st.session_state["exam_duration"] = max(
-                60,
-                int(st.session_state["exam_end_ts"] - time.time()),
-            )
-        st.session_state["exam_end_ts"] = None
-        st.rerun()
-    if c3.button("End Test", disabled=not st.session_state["exam_questions"]):
+        c2.button("Pause", disabled=True)
+    else:
+        if c1.button("Start Test", type="primary"):
+            if _start_exam(uss["exam_type"], setup_duration_secs):
+                st.rerun()
+            else:
+                st.error(
+                    "No questions found for this exam type. "
+                    "Run `python scripts/seed_bulk_questions.py` or use Admin → Seed practice bank."
+                )
+        c2.button("Pause", disabled=True)
+
+    if c3.button("End Test", disabled=not in_progress):
         _finish_exam()
         st.rerun()
 
-    if st.session_state["exam_questions"]:
-        if st.session_state["exam_running"]:
-            _render_active_exam()
-        else:
-            st.warning("Exam paused. Click **Start Test** to resume the timer.")
-            _render_active_exam()
+    if in_progress and running:
+        _render_active_exam()

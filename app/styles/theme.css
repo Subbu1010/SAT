@@ -39,8 +39,12 @@ div[data-testid="stStatusWidget"] {
   display: none !important;
 }
 
-:root {
-  --bg: #f8fbff;
+:root,
+.stApp[data-theme="light"] {
+  --bg: #f0f5fc;
+  --bg-soft: #e8f0fa;
+  --sidebar-bg: #ffffff;
+  --sidebar-bg-soft: #f6f9fe;
   --surface: #ffffff;
   --surface-glass: rgba(255, 255, 255, 0.75);
   --text: #132a4f;
@@ -51,11 +55,77 @@ div[data-testid="stStatusWidget"] {
   --danger: #e24d4d;
   --shadow: 0 8px 24px rgba(21, 50, 96, 0.08);
   --radius: 16px;
+  --border-subtle: rgba(45, 127, 249, 0.12);
+  --border-strong: rgba(45, 127, 249, 0.18);
+  --btn-secondary-bg: rgba(255, 255, 255, 0.9);
+  --btn-secondary-hover: #ffffff;
+  --btn-primary-text: #ffffff;
+  --btn-disabled-bg: #e8eef5;
+  --btn-disabled-text: #8fa3bf;
+  --alert-success-bg: rgba(27, 156, 110, 0.14);
+  --alert-success-text: #0d5c41;
+  --alert-error-bg: rgba(226, 77, 77, 0.14);
+  --alert-error-text: #9b2c2c;
+  --alert-warning-bg: rgba(255, 170, 0, 0.16);
+  --alert-warning-text: #7a5200;
+  --alert-info-bg: rgba(45, 127, 249, 0.12);
+  --alert-info-text: #1262e0;
+  --expand-btn-bg: #ffffff;
+  --logout-btn-bg: #ffffff;
+  --logout-btn-hover: rgba(226, 77, 77, 0.06);
+  --input-bg: #ffffff;
+  --input-border: rgba(45, 127, 249, 0.2);
+  --code-bg: rgba(45, 127, 249, 0.06);
 }
 
-.stApp {
-  background: linear-gradient(180deg, #ffffff 0%, var(--bg) 100%);
+.stApp[data-theme="dark"] {
+  --bg: #0c1424;
+  --bg-soft: #111d33;
+  --sidebar-bg: #101a2c;
+  --sidebar-bg-soft: #0d1626;
+  --surface: #1a2740;
+  --surface-glass: rgba(26, 39, 64, 0.82);
+  --text: #e8eef8;
+  --muted: #8fa3bf;
+  --primary: #5ba0ff;
+  --primary-strong: #2d7ff9;
+  --success: #34c38f;
+  --danger: #ff7b7b;
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  --radius: 16px;
+  --border-subtle: rgba(91, 160, 255, 0.16);
+  --border-strong: rgba(91, 160, 255, 0.24);
+  --btn-secondary-bg: rgba(26, 39, 64, 0.95);
+  --btn-secondary-hover: #223252;
+  --btn-primary-text: #ffffff;
+  --btn-disabled-bg: #121c2e;
+  --btn-disabled-text: #6b7f99;
+  --alert-success-bg: rgba(52, 195, 143, 0.2);
+  --alert-success-text: #9ef0c8;
+  --alert-error-bg: rgba(255, 123, 123, 0.2);
+  --alert-error-text: #ffc9c9;
+  --alert-warning-bg: rgba(255, 193, 7, 0.18);
+  --alert-warning-text: #ffe08a;
+  --alert-info-bg: rgba(91, 160, 255, 0.18);
+  --alert-info-text: #b8d4ff;
+  --expand-btn-bg: #1a2740;
+  --logout-btn-bg: #1a2740;
+  --logout-btn-hover: rgba(255, 123, 123, 0.12);
+  --input-bg: #152238;
+  --input-border: rgba(91, 160, 255, 0.22);
+  --code-bg: rgba(91, 160, 255, 0.1);
+}
+
+.stApp,
+[data-testid="stAppViewContainer"],
+[data-testid="stAppViewContainer"] > section.main {
+  background: linear-gradient(165deg, var(--bg) 0%, var(--bg-soft) 100%) !important;
   color: var(--text);
+}
+
+section[data-testid="stMain"],
+section[data-testid="stMain"] > div {
+  background: transparent !important;
 }
 
 .card {
@@ -63,13 +133,13 @@ div[data-testid="stStatusWidget"] {
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   padding: 1rem;
-  border: 1px solid rgba(45, 127, 249, 0.08);
+  border: 1px solid var(--border-subtle);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 10px 28px rgba(21, 50, 96, 0.12);
+  box-shadow: var(--shadow);
 }
 
 .glass {
@@ -125,10 +195,15 @@ section[data-testid="stMain"] {
   min-width: 0 !important;
 }
 
-/* Sidebar */
+/* Sidebar — white panel against tinted main area */
+section[data-testid="stSidebar"],
+section[data-testid="stSidebar"] > div {
+  background: linear-gradient(180deg, var(--sidebar-bg) 0%, var(--sidebar-bg-soft) 100%) !important;
+}
+
 section[data-testid="stSidebar"] {
-  background: linear-gradient(180deg, #f7fbff 0%, #eef4fd 100%);
-  border-right: 1px solid rgba(45, 127, 249, 0.1);
+  border-right: 1px solid var(--border-strong);
+  box-shadow: 4px 0 18px rgba(21, 50, 96, 0.06);
   min-width: 280px !important;
   max-width: 280px !important;
 }
@@ -147,8 +222,8 @@ section[data-testid="stSidebar"] {
   top: 0.65rem !important;
   left: 0.65rem !important;
   z-index: 999999 !important;
-  background: #ffffff !important;
-  border: 1px solid rgba(45, 127, 249, 0.22) !important;
+  background: var(--expand-btn-bg) !important;
+  border: 1px solid var(--border-strong) !important;
   border-radius: 10px !important;
   box-shadow: 0 4px 14px rgba(21, 50, 96, 0.12) !important;
 }
@@ -169,7 +244,7 @@ section[data-testid="stSidebar"] > div {
   text-align: center;
   padding: 0.65rem 0.35rem 0.8rem;
   margin-bottom: 0.25rem;
-  border-bottom: 1px solid rgba(45, 127, 249, 0.1);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .sidebar-brand-icon {
@@ -207,7 +282,7 @@ section[data-testid="stSidebar"] > div {
 .sidebar-logout-section {
   margin-top: 0.25rem;
   padding-top: 0.35rem;
-  border-top: 1px solid rgba(45, 127, 249, 0.1);
+  border-top: 1px solid var(--border-subtle);
 }
 
 .sidebar-user-card {
@@ -215,7 +290,7 @@ section[data-testid="stSidebar"] > div {
   align-items: center;
   gap: 0.7rem;
   background: var(--surface);
-  border: 1px solid rgba(45, 127, 249, 0.12);
+  border: 1px solid var(--border-subtle);
   border-radius: 14px;
   padding: 0.75rem;
   margin: 0.35rem 0 0.55rem;
@@ -299,38 +374,45 @@ section[data-testid="stSidebar"] .stButton > button {
 
 section[data-testid="stSidebar"] .stButton > button[kind="primary"] {
   background: linear-gradient(135deg, var(--primary) 0%, var(--primary-strong) 100%);
+  color: var(--btn-primary-text) !important;
   border: none;
   box-shadow: 0 8px 18px rgba(45, 127, 249, 0.22);
 }
 
-section[data-testid="stSidebar"] .stButton > button[kind="secondary"] {
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(45, 127, 249, 0.14);
-  color: var(--text);
+section[data-testid="stSidebar"] .stButton > button[kind="secondary"],
+section[data-testid="stSidebar"] .stButton > button:not([kind="primary"]) {
+  background: var(--btn-secondary-bg) !important;
+  border: 1px solid var(--border-subtle) !important;
+  color: var(--text) !important;
 }
 
-section[data-testid="stSidebar"] .stButton > button[kind="secondary"]:hover {
-  border-color: rgba(45, 127, 249, 0.3);
-  background: #fff;
-  color: var(--text);
+section[data-testid="stSidebar"] .stButton > button[kind="secondary"]:hover,
+section[data-testid="stSidebar"] .stButton > button:not([kind="primary"]):hover {
+  border-color: var(--border-strong) !important;
+  background: var(--btn-secondary-hover) !important;
+  color: var(--text) !important;
+}
+
+section[data-testid="stSidebar"] .stButton > button * {
+  color: inherit !important;
 }
 
 section[data-testid="stSidebar"] .st-key-main_logout_btn button {
   border: 1px solid rgba(226, 77, 77, 0.35) !important;
   color: var(--danger) !important;
-  background: #fff !important;
+  background: var(--logout-btn-bg) !important;
   margin-top: 0.15rem;
 }
 
 section[data-testid="stSidebar"] .st-key-main_logout_btn button:hover {
   border-color: var(--danger) !important;
-  background: rgba(226, 77, 77, 0.06) !important;
+  background: var(--logout-btn-hover) !important;
   color: var(--danger) !important;
 }
 
 section[data-testid="stSidebar"] form {
   background: var(--surface);
-  border: 1px solid rgba(45, 127, 249, 0.12);
+  border: 1px solid var(--border-subtle);
   border-radius: 14px;
   padding: 0.85rem;
   box-shadow: var(--shadow);
@@ -341,8 +423,318 @@ section[data-testid="stSidebar"] form {
   padding: 2rem 2.25rem;
   background: var(--surface);
   border-radius: var(--radius);
-  border: 1px solid rgba(45, 127, 249, 0.1);
+  border: 1px solid var(--border-subtle);
   box-shadow: var(--shadow);
+}
+
+/* Theme-aware Streamlit widgets */
+.stApp h1,
+.stApp h2,
+.stApp h3,
+.stApp h4,
+.stApp h5,
+.stApp h6,
+.stApp p,
+.stApp label,
+.stApp .stMarkdown,
+.stApp [data-testid="stMarkdownContainer"] {
+  color: var(--text);
+}
+
+.stApp .stCaption,
+.stApp small {
+  color: var(--muted) !important;
+}
+
+.stApp div[data-baseweb="input"] > div,
+.stApp div[data-baseweb="textarea"] > div,
+.stApp div[data-baseweb="select"] > div {
+  background-color: var(--input-bg) !important;
+  border-color: var(--input-border) !important;
+  color: var(--text) !important;
+}
+
+.stApp input:not([type="radio"]):not([type="checkbox"]),
+.stApp textarea,
+.stApp div[data-baseweb="select"] span {
+  color: var(--text, #132a4f) !important;
+  -webkit-text-fill-color: var(--text, #132a4f) !important;
+  caret-color: var(--text, #132a4f) !important;
+}
+
+.stApp input::placeholder,
+.stApp textarea::placeholder {
+  color: var(--muted) !important;
+  opacity: 1 !important;
+}
+
+.stApp [data-testid="stExpander"] details {
+  background: var(--surface) !important;
+  border: 1px solid var(--border-subtle) !important;
+  border-radius: 12px !important;
+  color: var(--text) !important;
+}
+
+.stApp [data-testid="stExpander"] summary {
+  color: var(--text) !important;
+  background: var(--surface) !important;
+}
+
+.stApp [data-testid="stExpander"] summary [data-testid="stMarkdownContainer"],
+.stApp [data-testid="stExpander"] summary [data-testid="stMarkdownContainer"] * {
+  color: var(--text) !important;
+}
+
+.stApp [data-testid="stExpanderDetails"] {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  border-top: 1px solid var(--border-subtle) !important;
+}
+
+.stApp [data-testid="stExpanderDetails"] [data-testid="stMarkdownContainer"],
+.stApp [data-testid="stExpanderDetails"] [data-testid="stMarkdownContainer"] p,
+.stApp [data-testid="stExpanderDetails"] [data-testid="stMarkdownContainer"] li,
+.stApp [data-testid="stExpanderDetails"] [data-testid="stMarkdownContainer"] strong,
+.stApp [data-testid="stExpanderDetails"] [data-testid="stMarkdownContainer"] span,
+.stApp [data-testid="stExpanderDetails"] .stMarkdown {
+  color: var(--text) !important;
+}
+
+.stApp div[data-testid="stChatMessage"] {
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+}
+
+.stApp div[data-testid="stChatMessage"] [data-testid="stMarkdownContainer"],
+.stApp div[data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] p {
+  color: var(--text) !important;
+}
+
+/* Chat input (AI Tutor) — Streamlit paints the shell with its own secondaryBg */
+.stApp div[data-testid="stChatInput"] > div {
+  background-color: var(--input-bg) !important;
+  border-color: var(--input-border) !important;
+  color: var(--text) !important;
+}
+
+.stApp div[data-testid="stChatInput"] div[data-baseweb="textarea"],
+.stApp div[data-testid="stChatInput"] div[data-baseweb="textarea"] > div {
+  background-color: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.stApp div[data-testid="stChatInput"] textarea,
+.stApp [data-testid="stChatInputTextArea"] {
+  background-color: transparent !important;
+  color: var(--text) !important;
+  -webkit-text-fill-color: var(--text) !important;
+  caret-color: var(--text) !important;
+}
+
+.stApp div[data-testid="stChatInput"] textarea::placeholder,
+.stApp [data-testid="stChatInputTextArea"]::placeholder {
+  color: var(--muted) !important;
+  opacity: 1 !important;
+}
+
+.stApp div[data-testid="stChatInput"] #stChatInputInstructions,
+.stApp div[data-testid="stChatInput"] .stChatInputInstructions {
+  color: var(--muted) !important;
+}
+
+.stApp [data-testid="stChatInputMicButton"],
+.stApp [data-testid="stChatInputCancelButton"],
+.stApp [data-testid="stChatInputApproveButton"] {
+  color: var(--muted) !important;
+}
+
+.stApp [data-testid="stChatInputMicButton"]:hover:not(:disabled),
+.stApp [data-testid="stChatInputCancelButton"]:hover:not(:disabled),
+.stApp [data-testid="stChatInputApproveButton"]:hover:not(:disabled) {
+  color: var(--text) !important;
+}
+
+.stApp div[data-testid="stVerticalBlockBorderWrapper"] {
+  border-color: var(--border-subtle) !important;
+  background: var(--surface);
+}
+
+/* Multiple-choice answers — integrated card-style radio rows */
+.mcq-answer-picker {
+  margin: 0.5rem 0 0.25rem;
+}
+
+.mcq-answer-picker [data-testid="stRadio"] div[role="radiogroup"] {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.mcq-answer-picker [data-testid="stRadio"] div[role="radiogroup"] > label {
+  align-items: flex-start !important;
+  gap: 0.65rem !important;
+  margin: 0 !important;
+  padding: 0.8rem 1rem !important;
+  border: 1px solid var(--border-subtle, rgba(45, 127, 249, 0.18)) !important;
+  border-radius: 10px !important;
+  background: var(--surface, #ffffff) !important;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.mcq-answer-picker [data-testid="stRadio"] div[role="radiogroup"] > label:hover {
+  border-color: var(--primary, #2d7ff9) !important;
+  box-shadow: 0 2px 8px rgba(45, 127, 249, 0.08);
+}
+
+.mcq-answer-picker [data-testid="stRadio"] div[role="radiogroup"] > label:has(input:checked) {
+  border-color: var(--primary-strong, #1262e0) !important;
+  background: var(--primary-soft, rgba(45, 127, 249, 0.08)) !important;
+  box-shadow: 0 0 0 1px var(--primary-strong, #1262e0);
+}
+
+.mcq-answer-picker [data-testid="stRadio"] div[role="radiogroup"] > label > div:last-child {
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+  overflow: visible !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  font-size: 1rem !important;
+  line-height: 1.45 !important;
+  word-break: break-word;
+}
+
+.mcq-answer-picker [data-testid="stRadio"] input[type="radio"] {
+  margin-top: 0.25rem !important;
+  flex-shrink: 0 !important;
+}
+
+.stApp [data-testid="stRadio"],
+.stApp [data-testid="stRadio"] div[role="radiogroup"],
+.stApp [data-testid="stRadio"] label,
+.stApp [data-testid="stRadio"] label span,
+.stApp [data-testid="stRadio"] label p,
+.stApp [data-testid="stRadio"] [data-testid="stMarkdownContainer"],
+.stApp [data-testid="stRadio"] [data-testid="stMarkdownContainer"] p,
+.stApp [data-testid="stRadio"] [data-testid="stWidgetLabel"],
+.stApp [data-testid="stRadio"] [data-testid="stCaption"],
+.stApp [data-testid="stRadio"] p,
+.stApp [data-testid="stRadio"] small,
+.stApp .stRadio label,
+.stApp .stCheckbox label,
+.stApp .stSelectbox label {
+  color: var(--text, #132a4f) !important;
+  -webkit-text-fill-color: var(--text, #132a4f) !important;
+}
+
+.stApp code {
+  background: var(--code-bg);
+  color: var(--text);
+}
+
+/* App-wide buttons (main pages, forms, mock exam controls) */
+.stApp .stButton > button,
+.stApp [data-testid="stFormSubmitButton"] > button,
+.stApp [data-testid="stFormSubmitButton"] button,
+.stApp [data-testid="stDownloadButton"] > button,
+.stApp [data-testid="stDownloadButton"] button {
+  border-radius: 10px !important;
+  font-weight: 600 !important;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease !important;
+}
+
+.stApp .stButton > button[kind="primary"],
+.stApp [data-testid="stFormSubmitButton"] > button[kind="primary"],
+.stApp [data-testid="stFormSubmitButton"] button[kind="primary"] {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-strong) 100%) !important;
+  color: var(--btn-primary-text) !important;
+  border: none !important;
+  box-shadow: 0 6px 16px rgba(45, 127, 249, 0.22) !important;
+}
+
+.stApp .stButton > button[kind="primary"]:hover:not(:disabled),
+.stApp [data-testid="stFormSubmitButton"] > button[kind="primary"]:hover:not(:disabled),
+.stApp [data-testid="stFormSubmitButton"] button[kind="primary"]:hover:not(:disabled) {
+  filter: brightness(1.06) !important;
+  color: var(--btn-primary-text) !important;
+}
+
+.stApp .stButton > button[kind="secondary"],
+.stApp .stButton > button:not([kind="primary"]):not([kind="tertiary"]),
+.stApp [data-testid="stFormSubmitButton"] > button[kind="secondary"],
+.stApp [data-testid="stFormSubmitButton"] button[kind="secondary"],
+.stApp [data-testid="stFormSubmitButton"] > button:not([kind="primary"]),
+.stApp [data-testid="stFormSubmitButton"] button:not([kind="primary"]),
+.stApp [data-testid="stDownloadButton"] > button,
+.stApp [data-testid="stDownloadButton"] button {
+  background: var(--btn-secondary-bg) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border-subtle) !important;
+}
+
+.stApp .stButton > button[kind="secondary"]:hover:not(:disabled),
+.stApp .stButton > button:not([kind="primary"]):not([kind="tertiary"]):hover:not(:disabled),
+.stApp [data-testid="stFormSubmitButton"] > button:hover:not(:disabled),
+.stApp [data-testid="stFormSubmitButton"] button:hover:not(:disabled),
+.stApp [data-testid="stDownloadButton"] > button:hover:not(:disabled),
+.stApp [data-testid="stDownloadButton"] button:hover:not(:disabled) {
+  background: var(--btn-secondary-hover) !important;
+  border-color: var(--border-strong) !important;
+  color: var(--text) !important;
+}
+
+.stApp .stButton > button:disabled,
+.stApp [data-testid="stFormSubmitButton"] > button:disabled,
+.stApp [data-testid="stFormSubmitButton"] button:disabled,
+.stApp [data-testid="stDownloadButton"] > button:disabled,
+.stApp [data-testid="stDownloadButton"] button:disabled {
+  background: var(--btn-disabled-bg) !important;
+  color: var(--btn-disabled-text) !important;
+  border-color: var(--border-subtle) !important;
+  opacity: 0.85 !important;
+}
+
+.stApp .stButton > button * ,
+.stApp [data-testid="stFormSubmitButton"] button * ,
+.stApp [data-testid="stDownloadButton"] button * {
+  color: inherit !important;
+}
+
+/* Streamlit 1.58 alerts (st.success / st.error / st.warning / st.info) */
+.stApp [data-testid="stAlertContainer"] {
+  border-radius: 12px !important;
+}
+
+.stApp [data-testid="stAlertContainer"]:has([data-testid="stAlertContentSuccess"]) {
+  background-color: var(--alert-success-bg) !important;
+  color: var(--alert-success-text) !important;
+}
+
+.stApp [data-testid="stAlertContainer"]:has([data-testid="stAlertContentError"]) {
+  background-color: var(--alert-error-bg) !important;
+  color: var(--alert-error-text) !important;
+}
+
+.stApp [data-testid="stAlertContainer"]:has([data-testid="stAlertContentWarning"]) {
+  background-color: var(--alert-warning-bg) !important;
+  color: var(--alert-warning-text) !important;
+}
+
+.stApp [data-testid="stAlertContainer"]:has([data-testid="stAlertContentInfo"]) {
+  background-color: var(--alert-info-bg) !important;
+  color: var(--alert-info-text) !important;
+}
+
+.stApp [data-testid^="stAlertContent"] [data-testid="stMarkdownContainer"],
+.stApp [data-testid^="stAlertContent"] [data-testid="stMarkdownContainer"] p,
+.stApp [data-testid^="stAlertContent"] [data-testid="stMarkdownContainer"] * {
+  color: inherit !important;
+}
+
+.stApp [data-testid="stMarkdownContainer"] strong,
+.stApp [data-testid="stMarkdownContainer"] b {
+  color: inherit;
 }
 
 .welcome-kicker {

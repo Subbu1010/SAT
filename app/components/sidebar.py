@@ -5,7 +5,7 @@ from __future__ import annotations
 import streamlit as st
 
 from app.authentication.auth_service import AuthService
-from app.pages import admin, ai_tutor, analytics, dashboard, mock_exam, practice
+from app.utils.theme import render_theme_selector
 
 
 def render_sidebar_brand() -> None:
@@ -33,6 +33,8 @@ def _user_details(auth: AuthService) -> tuple[str, str, str, str]:
 
 def render_sidebar_footer(auth: AuthService) -> None:
     """Logout directly below navigation; user card at the bottom."""
+    st.markdown('<p class="sidebar-section-label">Appearance</p>', unsafe_allow_html=True)
+    render_theme_selector()
     st.markdown('<div class="sidebar-logout-section"></div>', unsafe_allow_html=True)
     if st.button("Logout", type="secondary", use_container_width=True, key="main_logout_btn"):
         auth.logout()
@@ -56,6 +58,8 @@ def render_sidebar_footer(auth: AuthService) -> None:
 
 
 def build_navigation_pages(auth: AuthService) -> list[st.Page]:
+    from app.pages import admin, ai_tutor, analytics, dashboard, mock_exam, practice
+
     pages = [
         st.Page(dashboard.render, title="Dashboard", icon="📊", url_path="dashboard", default=True),
         st.Page(practice.render, title="Practice", icon="✏️", url_path="practice"),
@@ -98,6 +102,8 @@ def _render_login_form(auth: AuthService, *, form_key: str = "login_form") -> No
 def render_guest_sidebar(auth: AuthService) -> None:
     with st.sidebar:
         render_sidebar_brand()
+        st.markdown('<p class="sidebar-section-label">Appearance</p>', unsafe_allow_html=True)
+        render_theme_selector()
 
 
 def render_guest_login_page(auth: AuthService) -> None:

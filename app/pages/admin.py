@@ -149,11 +149,22 @@ def render():
         source_name = st.text_input("Source label", value="licensed_question_bank")
         if uploaded and st.button("Import Question Bank"):
             data = uploaded.getvalue()
-            if uploaded.name.endswith(".csv"):
-                importer.import_csv_bytes(data, source=source_name)
-            else:
-                importer.import_excel_bytes(data, source=source_name)
-            st.success("Questions imported.")
+            try:
+                if uploaded.name.endswith(".csv"):
+                    result = importer.import_csv_bytes(data, source=source_name)
+                else:
+                    result = importer.import_excel_bytes(data, source=source_name)
+                count = len(result.data or [])
+                st.success(f"Imported {count} question(s).")
+            except ValueError as exc:
+                st.error(str(exc))
+            except Exception as exc:
+                st.error(f"Import failed: {exc}")
+        st.caption(
+            "Required columns: `exam_type`, `subject`, `topic`, `difficulty`, `question_text`, "
+            "`options`, `answer`, `explanation`. Use `||` between choices, or separate "
+            "`option_a`–`option_d` columns. Match `app/database/seed_questions.csv`."
+        )
         st.info(
             "For third-party question banks, only import material you are licensed to store and redistribute."
         )

@@ -12,6 +12,7 @@ from app.authentication.session_store import (
 )
 from app.database.supabase_client import get_supabase_admin_client, get_supabase_client
 from app.services.login_history_service import log_login_event
+from app.utils.user_session import clear_user_session_state, ensure_user_session_scope
 
 
 class AuthService:
@@ -67,6 +68,8 @@ class AuthService:
             self._apply_session(session)
             save_session_tokens(session, remember_me)
 
+        ensure_user_session_scope(user.id)
+
         meta = user.user_metadata or {}
         try:
             self._sync_public_user(
@@ -107,11 +110,13 @@ class AuthService:
         except Exception:
             pass
         clear_session_tokens()
+        clear_user_session_state()
         st.session_state.pop("auth_user", None)
         st.session_state["is_authenticated"] = False
         st.session_state.pop("session_persistent", None)
         st.session_state.pop("auth_access_token", None)
         st.session_state.pop("auth_refresh_token", None)
+        st.session_state.pop("active_user_id", None)
 
     def forgot_password(self, email: str):
         return self.client.auth.reset_password_for_email(email.strip())
