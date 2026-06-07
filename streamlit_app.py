@@ -16,10 +16,18 @@ def _bootstrap_local_venv() -> None:
 
 _bootstrap_local_venv()
 
+import streamlit as st
+
+# Must be the first Streamlit call in this entry script (not in app.app import).
+st.set_page_config(
+    page_title="SAT",
+    page_icon="🎯",
+    layout="wide",
+    initial_sidebar_state=280,
+)
+st.set_option("client.toolbarMode", "viewer")
+
 from app.app import main
 
-
-if __name__ == "__main__":
-    # Delegate to the real app entrypoint inside the app package
-    main()
+main()
 

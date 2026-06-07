@@ -12,7 +12,10 @@ from app.authentication.session_store import (
 )
 from app.database.supabase_client import get_supabase_admin_client, get_supabase_client
 from app.services.login_history_service import log_login_event
+from app.utils.client_info import get_client_audit_info
 from app.utils.user_session import clear_user_session_state, ensure_user_session_scope
+
+_USER_ROLE_KEY = "auth_user_role"
 
 
 class AuthService:
@@ -46,15 +49,41 @@ class AuthService:
             )
         return response
 
+    def _log_audit_event(
+        self,
+        *,
+        email: str,
+        status: str,
+        user_id: str | None = None,
+    ) -> None:
+        ip_address, location = get_client_audit_info(resolve_location=False)
+        log_login_event(
+            email=email,
+            status=status,
+            user_id=user_id,
+            ip_address=ip_address,
+            location=location,
+        )
+
     def login(self, email: str, password: str, remember_me: bool = False):
         result = sign_in(email, password)
         if not result["ok"]:
-            log_login_event(email=email, status="failed")
+            self._log_audit_event(email=email, status="failed")
             hint = result.get("hint", "")
             raise RuntimeError(f"{result['error']}. {hint}".strip())
 
         user = result["user"]
-        log_login_event(
+        if self._is_user_disabled(user.id):
+            self._log_audit_event(
+                user_id=user.id,
+                email=result.get("email") or email,
+                status="disabled",
+            )
+            raise RuntimeError(
+                "This account has been disabled. Contact your administrator."
+            )
+
+        self._log_audit_event(
             user_id=user.id,
             email=result.get("email") or email,
             status="success",
@@ -63,6 +92,8 @@ class AuthService:
         st.session_state["auth_user"] = user
         st.session_state["is_authenticated"] = True
         st.session_state["session_persistent"] = remember_me
+        meta = user.user_metadata or {}
+        st.session_state[_USER_ROLE_KEY] = meta.get("role", "student")
 
         if session:
             self._apply_session(session)
@@ -70,7 +101,6 @@ class AuthService:
 
         ensure_user_session_scope(user.id)
 
-        meta = user.user_metadata or {}
         try:
             self._sync_public_user(
                 user_id=user.id,
@@ -86,6 +116,20 @@ class AuthService:
             pass
         return result
 
+    def _is_user_disabled(self, user_id: str) -> bool:
+        try:
+            admin = get_supabase_admin_client()
+            row = (
+                admin.table("users")
+                .select("is_disabled")
+                .eq("user_id", user_id)
+                .limit(1)
+                .execute()
+            )
+            return bool(row.data and row.data[0].get("is_disabled"))
+        except Exception:
+            return False
+
     def _sync_public_user(
         self, user_id: str, email: str, first_name: str, last_name: str, role: str
     ) -> None:
@@ -96,15 +140,20 @@ class AuthService:
                 "first_name": first_name,
                 "last_name": last_name,
                 "role": role,
-                "is_disabled": False,
             },
             on_conflict="user_id",
         ).execute()
+        if self.current_user() and self.current_user().id == user_id:
+            st.session_state[_USER_ROLE_KEY] = role
 
     def logout(self):
         user = self.current_user()
         if user:
-            log_login_event(user_id=user.id, email=user.email or "", status="logout")
+            self._log_audit_event(
+                user_id=user.id,
+                email=user.email or "",
+                status="logout",
+            )
         try:
             self.client.auth.sign_out()
         except Exception:
@@ -117,6 +166,7 @@ class AuthService:
         st.session_state.pop("auth_access_token", None)
         st.session_state.pop("auth_refresh_token", None)
         st.session_state.pop("active_user_id", None)
+        st.session_state.pop(_USER_ROLE_KEY, None)
 
     def forgot_password(self, email: str):
         return self.client.auth.reset_password_for_email(email.strip())
@@ -221,17 +271,26 @@ class AuthService:
             st.stop()
 
     def get_user_role(self) -> str:
+        cached_role = st.session_state.get(_USER_ROLE_KEY)
+        if cached_role:
+            return cached_role
+
         user = self.current_user()
         if not user:
             return "student"
-        role_row = (
-            self.client.table("users").select("role").eq("user_id", user.id).limit(1).execute()
-        )
-        return (
-            role_row.data[0]["role"]
-            if role_row.data
-            else (user.user_metadata or {}).get("role", "student")
-        )
+
+        role = (user.user_metadata or {}).get("role", "student")
+        try:
+            role_row = (
+                self.client.table("users").select("role").eq("user_id", user.id).limit(1).execute()
+            )
+            if role_row.data:
+                role = role_row.data[0]["role"]
+        except Exception:
+            pass
+
+        st.session_state[_USER_ROLE_KEY] = role
+        return role
 
     def require_role(self, allowed_roles: set[str]):
         self.require_auth()

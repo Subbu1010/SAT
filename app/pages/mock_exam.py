@@ -9,18 +9,88 @@ from app.components.answer_selector import (
     render_answer_selector,
     restore_answer_widget,
 )
+from app.services.adaptive_engine import next_difficulty
 from app.services.mock_exam_service import (
     DEFAULT_QUESTIONS_PER_SUBJECT,
+    SUBJECT_CHOICES,
+    SUBJECTS,
     build_mock_exam,
     elapsed_seconds,
+    sample_questions_for_subject,
     save_mock_exam,
     score_exam,
+    subjects_from_choice,
 )
+from app.services.question_service import QuestionService
+from app.services.question_source import display_batch_label
 from app.utils.compact_layout import inject_compact_spacing
-from app.utils.question_shuffle import shuffled_options
+from app.utils.question_shuffle import shuffle_question_choices, shuffled_options
 from app.utils.scoped_session import scoped_has, scoped_key, uss
 
 DEFAULT_DURATION = 60 * 60
+
+_EXAM_COMPACT_CSS = """
+<style>
+.exam-chrome { margin-bottom: 0.2rem !important; }
+.exam-chrome + div[data-testid="stHorizontalBlock"] {
+  margin-bottom: 0.15rem !important;
+  align-items: center;
+}
+.exam-chrome + div[data-testid="stHorizontalBlock"] button {
+  min-height: 1.65rem;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.8rem;
+}
+.exam-nav-block + div[data-testid="stHorizontalBlock"] {
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex-wrap: nowrap !important;
+  gap: 0.15rem;
+  padding-bottom: 0;
+  margin-bottom: 0;
+}
+.exam-nav-block + div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+  width: auto !important;
+  min-width: 2.1rem;
+  flex: 0 0 auto !important;
+}
+.exam-nav-block + div[data-testid="stHorizontalBlock"] button {
+  white-space: nowrap !important;
+  min-width: 2rem;
+  min-height: 1.55rem;
+  padding: 0.1rem 0.3rem;
+  font-size: 0.72rem;
+  line-height: 1;
+}
+div[data-testid="stExpander"]:has(.exam-nav-block) {
+  margin-bottom: 0.25rem !important;
+}
+div[data-testid="stExpander"]:has(.exam-nav-block) details {
+  border: none;
+  background: transparent;
+}
+div[data-testid="stExpander"]:has(.exam-nav-block) summary {
+  padding: 0.2rem 0 !important;
+  font-size: 0.82rem;
+}
+.exam-timer-text {
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.2;
+  margin: 0;
+}
+.exam-meta-line {
+  font-size: 0.78rem;
+  color: var(--text-color-secondary, #666);
+  margin: 0 0 0.25rem 0;
+  line-height: 1.3;
+}
+</style>
+"""
+
+
+def _inject_exam_compact_css() -> None:
+    st.markdown(_EXAM_COMPACT_CSS, unsafe_allow_html=True)
 
 
 def _init_state() -> None:
@@ -33,6 +103,13 @@ def _init_state() -> None:
         "exam_duration_total": DEFAULT_DURATION,
         "exam_remaining_secs": DEFAULT_DURATION,
         "exam_type": "SAT",
+        "exam_subject_choice": "All subjects",
+        "exam_subjects": list(SUBJECTS),
+        "exam_difficulty_mode": True,
+        "exam_manual_difficulty": "Medium",
+        "exam_adaptive_difficulty": "Medium",
+        "exam_adaptive_results": [],
+        "exam_adaptive_by_question": {},
         "exam_questions": [],
         "exam_index": 0,
         "exam_answers": {},
@@ -46,6 +123,89 @@ def _init_state() -> None:
 
 def _exam_in_progress() -> bool:
     return bool(uss.get("exam_questions")) and not uss.get("exam_finished")
+
+
+def _reset_to_new_exam() -> None:
+    """Clear exam state and return to the setup screen."""
+    uss["exam_finished"] = False
+    uss["exam_results"] = None
+    uss["exam_questions"] = []
+    uss["exam_answers"] = {}
+    uss["exam_flagged"] = []
+    uss["exam_running"] = False
+    uss["exam_start_ts"] = None
+    uss["exam_end_ts"] = None
+    uss["exam_index"] = 0
+    uss["exam_remaining_secs"] = DEFAULT_DURATION
+    uss["exam_duration_total"] = DEFAULT_DURATION
+    uss["exam_duration"] = DEFAULT_DURATION
+    uss["exam_adaptive_difficulty"] = "Medium"
+    uss["exam_adaptive_results"] = []
+    uss["exam_adaptive_by_question"] = {}
+    uss.pop("exam_subject_pools", None)
+
+
+def _adaptive_status_message(results: list[bool]) -> str:
+    if len(results) < 3:
+        remaining = 3 - len(results)
+        return (
+            f"Adaptive: {len(results)}/3 answers — "
+            f"{remaining} more before difficulty can change."
+        )
+    last_three = results[-3:]
+    if all(last_three):
+        return "Adaptive: 3 correct in a row — next questions increase in difficulty."
+    if not any(last_three):
+        return "Adaptive: 3 incorrect in a row — next questions decrease in difficulty."
+    return "Adaptive: mixed recent results — difficulty stays the same for now."
+
+
+def _refresh_remaining_questions(new_difficulty: str) -> None:
+    questions = list(uss.get("exam_questions") or [])
+    index = uss.get("exam_index", 0)
+    pools = uss.get("exam_subject_pools") or {}
+    answers = uss.get("exam_answers") or {}
+    used_ids = {q["question_id"] for q in questions}
+
+    for i in range(index + 1, len(questions)):
+        q = questions[i]
+        if q["question_id"] in answers:
+            continue
+        subject = q.get("subject", "")
+        pool = pools.get(subject, [])
+        replacements = sample_questions_for_subject(
+            pool,
+            difficulty=new_difficulty,
+            count=1,
+            exclude_ids=used_ids,
+        )
+        if not replacements:
+            continue
+        questions[i] = replacements[0]
+        used_ids.add(replacements[0]["question_id"])
+
+    uss["exam_questions"] = shuffle_question_choices(questions)
+
+
+def _update_adaptive_for_answer(question: dict, selected: str) -> None:
+    if not uss.get("exam_difficulty_mode"):
+        return
+
+    qid = question["question_id"]
+    is_correct = selected == question["answer"]
+    by_q = dict(uss.get("exam_adaptive_by_question") or {})
+    by_q[qid] = is_correct
+    uss["exam_adaptive_by_question"] = by_q
+
+    exam_questions = uss.get("exam_questions") or []
+    results = [by_q[q["question_id"]] for q in exam_questions if q["question_id"] in by_q]
+    uss["exam_adaptive_results"] = results
+
+    prev_difficulty = uss.get("exam_adaptive_difficulty", "Medium")
+    new_difficulty = next_difficulty(results, prev_difficulty)
+    uss["exam_adaptive_difficulty"] = new_difficulty
+    if new_difficulty != prev_difficulty:
+        _refresh_remaining_questions(new_difficulty)
 
 
 def _remaining_seconds() -> int:
@@ -68,12 +228,32 @@ def _maybe_finish_expired_exam() -> bool:
     return False
 
 
-def _start_exam(exam_type: str, duration_secs: int) -> bool:
-    questions = build_mock_exam(exam_type)
+def _start_exam(
+    exam_type: str,
+    duration_secs: int,
+    subjects: list[str],
+    *,
+    difficulty_mode: bool,
+    difficulty: str,
+) -> bool:
+    start_difficulty = "Medium" if difficulty_mode else difficulty
+    questions, pools = build_mock_exam(
+        exam_type,
+        subjects=subjects,
+        difficulty=start_difficulty,
+        difficulty_mode=difficulty_mode,
+    )
     if not questions:
         return False
 
     uss["exam_type"] = exam_type
+    uss["exam_subjects"] = list(subjects)
+    uss["exam_difficulty_mode"] = difficulty_mode
+    uss["exam_manual_difficulty"] = difficulty
+    uss["exam_adaptive_difficulty"] = start_difficulty
+    uss["exam_adaptive_results"] = []
+    uss["exam_adaptive_by_question"] = {}
+    uss["exam_subject_pools"] = pools
     uss["exam_questions"] = questions
     uss["exam_index"] = 0
     uss["exam_answers"] = {}
@@ -141,6 +321,7 @@ def _sync_exam_answers(questions: list[dict]) -> dict[str, str]:
             picked = answer_from_widget(options, st.session_state[widget_key])
             if picked:
                 answers[qid] = picked
+                _update_adaptive_for_answer(question, picked)
     uss["exam_answers"] = answers
     return answers
 
@@ -245,14 +426,8 @@ def _render_results() -> None:
     results = uss["exam_results"]
     if not results:
         st.warning("Exam ended but results are unavailable. Please start a new exam.")
-        if st.button("Start new exam", key=scoped_key("recover_new_exam")):
-            uss["exam_finished"] = False
-            uss["exam_results"] = None
-            uss["exam_questions"] = []
-            uss["exam_running"] = False
-            uss["exam_end_ts"] = None
-            uss["exam_remaining_secs"] = DEFAULT_DURATION
-            uss["exam_duration_total"] = DEFAULT_DURATION
+        if st.button("Start New Exam", key=scoped_key("recover_new_exam")):
+            _reset_to_new_exam()
             st.rerun()
         return
 
@@ -325,20 +500,12 @@ def _render_results() -> None:
                 for item in review
             ]
         )
-        st.dataframe(table, use_container_width=True, hide_index=True)
+        st.dataframe(table, width="stretch", hide_index=True)
 
     _render_question_review(results)
 
-    if st.button("Start new exam"):
-        uss["exam_finished"] = False
-        uss["exam_results"] = None
-        uss["exam_questions"] = []
-        uss["exam_answers"] = {}
-        uss["exam_flagged"] = []
-        uss["exam_running"] = False
-        uss["exam_end_ts"] = None
-        uss["exam_remaining_secs"] = DEFAULT_DURATION
-        uss["exam_duration_total"] = DEFAULT_DURATION
+    if st.button("Start New Exam", key=scoped_key("results_bottom_start_new_exam")):
+        _reset_to_new_exam()
         st.rerun()
 
 
@@ -364,7 +531,7 @@ def _render_flagged_panel(questions: list[dict]) -> None:
         st.info("No flagged questions yet. Flag a question, then use **Review flagged only** to review them.")
         return
 
-    st.subheader(f"Flagged questions ({len(flagged_ids)})")
+    st.caption(f"Flagged ({len(flagged_ids)})")
     with st.container():
         for qid in flagged_ids:
             idx = _question_index(questions, qid)
@@ -462,7 +629,7 @@ def _render_question_nav(questions: list[dict], total: int) -> None:
     )
     cols = st.columns([1] + [1] * n + [1])
     with cols[0]:
-        if st.button("◀", key=scoped_key("exam_prev"), disabled=nav_disabled, use_container_width=True):
+        if st.button("◀", key=scoped_key("exam_prev"), disabled=nav_disabled, width="stretch"):
             if flagged_only and flagged_idxs:
                 if current not in flagged_idxs:
                     uss["exam_index"] = flagged_idxs[-1]
@@ -480,13 +647,13 @@ def _render_question_nav(questions: list[dict], total: int) -> None:
                 _nav_button_label(idx, questions, flagged_ids, answers),
                 key=scoped_key(f"nav_q_{idx}"),
                 type="primary" if idx == current else "secondary",
-                use_container_width=False,
+                width="content",
             ):
                 uss["exam_index"] = idx
                 st.rerun()
 
     with cols[-1]:
-        if st.button("▶", key=scoped_key("exam_next"), disabled=nav_disabled, use_container_width=True):
+        if st.button("▶", key=scoped_key("exam_next"), disabled=nav_disabled, width="stretch"):
             if flagged_only and flagged_idxs:
                 if current not in flagged_idxs:
                     uss["exam_index"] = flagged_idxs[0]
@@ -500,19 +667,44 @@ def _render_question_nav(questions: list[dict], total: int) -> None:
 
 
 @st.fragment(run_every=1)
-def _exam_timer_tick() -> None:
-    """Refresh the countdown every second while the exam is running."""
-    if not uss.get("exam_running") or not _exam_in_progress():
-        return
-    if _maybe_finish_expired_exam():
-        st.rerun(scope="app")
-    remaining = _remaining_seconds()
-    total = uss.get("exam_duration_total") or uss.get("exam_duration") or DEFAULT_DURATION
-    if total > 0:
-        st.progress(
-            1 - (remaining / total),
-            text=f"Time remaining: {_format_time(remaining)}",
-        )
+def _exam_timer_widget(*, running: bool) -> None:
+    """Live countdown while the exam is running."""
+    if running:
+        if _maybe_finish_expired_exam():
+            st.rerun(scope="app")
+        icon = "⏱"
+    else:
+        icon = "⏸"
+    st.markdown(
+        f'<p class="exam-timer-text">{icon} {_format_time(_remaining_seconds())}</p>',
+        unsafe_allow_html=True,
+    )
+
+
+def _render_exam_toolbar(*, running: bool, in_progress: bool) -> None:
+    """Single compact row: timer, progress, and exam controls."""
+    st.markdown('<div class="exam-chrome"></div>', unsafe_allow_html=True)
+    answered = len(uss.get("exam_answers", {}))
+    total_q = len(uss.get("exam_questions", []))
+
+    t_timer, t_prog, t_pause, t_end = st.columns([1.1, 1.4, 1, 1])
+    with t_timer:
+        _exam_timer_widget(running=running)
+    with t_prog:
+        st.caption(f"{answered}/{total_q} answered")
+    with t_pause:
+        if running:
+            if st.button("Pause", key=scoped_key("toolbar_pause")):
+                _pause_exam()
+                st.rerun()
+        elif in_progress:
+            if st.button("Resume", type="primary", key=scoped_key("toolbar_resume")):
+                _resume_exam()
+                st.rerun()
+    with t_end:
+        if st.button("End Test", key=scoped_key("toolbar_end")):
+            _finish_exam()
+            st.rerun()
 
 
 def _render_active_exam() -> None:
@@ -522,32 +714,53 @@ def _render_active_exam() -> None:
         return
 
     _restore_exam_answer_widgets(questions)
-    _exam_timer_tick()
 
     index = uss["exam_index"]
     question = questions[index]
     qid = question["question_id"]
     total = len(questions)
 
-    answered = len(uss["exam_answers"])
+    question_batch = display_batch_label(question.get("source"))
     flagged_count = len(uss["exam_flagged"])
-    remaining = total - answered
-    cap_col, flag_col = st.columns([5, 1])
-    with cap_col:
-        st.caption(
-            f"Question {index + 1} of {total} — "
-            f"{question.get('subject')} · {question.get('topic')} · {question.get('difficulty')} · "
-            f"Answered: {answered} · Remaining: {remaining} · Flagged: {flagged_count}"
-        )
+    meta_bits = [
+        f"Q{index + 1}/{total}",
+        question_batch,
+        str(question.get("subject", "")),
+        str(question.get("difficulty", "")),
+        f"{flagged_count} flagged",
+    ]
+    if uss.get("exam_difficulty_mode"):
+        meta_bits.append(f"target {uss.get('exam_adaptive_difficulty', 'Medium')}")
+    st.markdown(
+        f'<p class="exam-meta-line">{" · ".join(meta_bits)}</p>',
+        unsafe_allow_html=True,
+    )
+    if uss.get("exam_difficulty_mode"):
+        st.caption(_adaptive_status_message(uss.get("exam_adaptive_results", [])))
+
+    nav_col, flag_col = st.columns([4, 1])
+    with nav_col:
+        with st.expander(f"Jump to question ({total})", expanded=False):
+            st.checkbox(
+                "Flagged only",
+                key=scoped_key("exam_review_flagged_only"),
+                help="Show flagged questions only in the navigator.",
+            )
+            _render_question_nav(questions, total)
+            if uss.get("exam_review_flagged_only"):
+                _render_flagged_panel(questions)
     with flag_col:
-        st.checkbox(
-            "Flagged only",
-            key=scoped_key("exam_review_flagged_only"),
-            help="Navigator shows flagged questions only; Previous/Next move between them.",
-        )
-    _render_question_nav(questions, total)
-    if uss.get("exam_review_flagged_only"):
-        _render_flagged_panel(questions)
+        flagged = qid in uss["exam_flagged"]
+        if st.button(
+            "Unflag" if flagged else "Flag",
+            key=scoped_key(f"exam_flag_{qid}"),
+            help="Mark this question for review.",
+        ):
+            if flagged:
+                uss["exam_flagged"].remove(qid)
+            else:
+                uss["exam_flagged"].append(qid)
+            st.rerun()
 
     st.markdown('<div class="card question-card">', unsafe_allow_html=True)
     st.markdown(f"### {question.get('question_text', 'Question')}")
@@ -568,25 +781,35 @@ def _render_active_exam() -> None:
             answers = dict(uss.get("exam_answers") or {})
             answers[qid] = selected
             uss["exam_answers"] = answers
+            _update_adaptive_for_answer(question, selected)
 
     _sync_exam_answers(questions)
-
-    flag_col, _ = st.columns([1, 3])
-    flagged = qid in uss["exam_flagged"]
-    if flag_col.button("Unflag" if flagged else "Flag", key=scoped_key(f"exam_flag_{qid}")):
-        if flagged:
-            uss["exam_flagged"].remove(qid)
-        else:
-            uss["exam_flagged"].append(qid)
-        st.rerun()
 
     st.markdown("</div>", unsafe_allow_html=True)
 
 
 def render():
     inject_compact_spacing()
-    st.title("Timed Mock Exam")
+    _inject_exam_compact_css()
     _init_state()
+
+    title_col, action_col = st.columns([5, 1])
+    with title_col:
+        st.title("Timed Mock Exam")
+    with action_col:
+        show_start_new = _exam_in_progress() or (
+            uss.get("exam_finished") and uss.get("exam_results")
+        )
+        if show_start_new and st.button(
+            "Start New Exam",
+            key=scoped_key("page_top_start_new_exam"),
+            type="secondary",
+        ):
+            _reset_to_new_exam()
+            st.rerun()
+
+    qs = QuestionService()
+    active_batch = qs.get_active_student_batch_label()
 
     if uss["exam_finished"] and uss["exam_results"]:
         _render_results()
@@ -606,7 +829,7 @@ def render():
             _sync_exam_answers(questions)
 
     if not in_progress:
-        setup_col1, setup_col2 = st.columns(2)
+        setup_col1, setup_col2, setup_col3 = st.columns(3)
         with setup_col1:
             uss["exam_type"] = st.selectbox(
                 "Exam Type",
@@ -614,54 +837,78 @@ def render():
                 index=["SAT", "PSAT", "PSAT 8/9"].index(uss["exam_type"]),
             )
         with setup_col2:
+            subject_choice = uss.get("exam_subject_choice", "All subjects")
+            if subject_choice not in SUBJECT_CHOICES:
+                subject_choice = "All subjects"
+            uss["exam_subject_choice"] = st.selectbox(
+                "Subjects",
+                SUBJECT_CHOICES,
+                index=SUBJECT_CHOICES.index(subject_choice),
+                help="Choose all subjects or focus on one subject.",
+            )
+            uss["exam_subjects"] = subjects_from_choice(uss["exam_subject_choice"])
+        with setup_col3:
             duration_mins = st.selectbox("Duration (min)", [30, 45, 60], index=2)
         setup_duration_secs = duration_mins * 60
-        st.caption(
-            f"Up to {DEFAULT_QUESTIONS_PER_SUBJECT} questions per subject "
-            f"({DEFAULT_QUESTIONS_PER_SUBJECT * 3} total, shuffled)"
-        )
-    else:
-        answered = len(uss.get("exam_answers", {}))
-        total_q = len(uss.get("exam_questions", []))
-        progress_bits = [
-            f"{uss.get('exam_type', 'SAT')} mock exam in progress",
-            f"{answered}/{total_q} answered",
-        ]
-        if not running:
-            progress_bits.append(f"time remaining {_format_time(_remaining_seconds())}")
-        st.caption(" — ".join(progress_bits))
-        if not running:
-            st.info(
-                f"Exam paused. Time remaining: **{_format_time(_remaining_seconds())}**. "
-                "Click **Resume Test** to continue. You can leave this page and return later — "
-                "your progress and remaining time are saved."
-            )
 
-    c1, c2, c3 = st.columns(3)
-    if running:
-        c1.button("Start Test", type="primary", disabled=True)
-        if c2.button("Pause"):
-            _pause_exam()
-            st.rerun()
-    elif in_progress:
-        if c1.button("Resume Test", type="primary"):
-            _resume_exam()
-            st.rerun()
-        c2.button("Pause", disabled=True)
-    else:
-        if c1.button("Start Test", type="primary"):
-            if _start_exam(uss["exam_type"], setup_duration_secs):
+        settings_col1, settings_col2 = st.columns(2)
+        with settings_col1:
+            uss["exam_difficulty_mode"] = st.toggle(
+                "Adaptive mode",
+                value=bool(uss.get("exam_difficulty_mode", True)),
+                help="Adjust upcoming question difficulty from your recent answers.",
+            )
+        with settings_col2:
+            if not uss["exam_difficulty_mode"]:
+                manual = uss.get("exam_manual_difficulty", "Medium")
+                if manual not in ("Easy", "Medium", "Hard"):
+                    manual = "Medium"
+                uss["exam_manual_difficulty"] = st.selectbox(
+                    "Difficulty",
+                    ["Easy", "Medium", "Hard"],
+                    index=["Easy", "Medium", "Hard"].index(manual),
+                )
+            else:
+                uss["exam_manual_difficulty"] = uss.get("exam_manual_difficulty", "Medium")
+
+        subject_count = len(uss["exam_subjects"])
+        total_preview = DEFAULT_QUESTIONS_PER_SUBJECT * subject_count
+        difficulty_note = (
+            "adaptive (starts Medium)"
+            if uss["exam_difficulty_mode"]
+            else uss["exam_manual_difficulty"]
+        )
+        st.caption(
+            f"Batch: {active_batch} · {uss['exam_subject_choice']} · "
+            f"up to {DEFAULT_QUESTIONS_PER_SUBJECT} per subject ({total_preview} total) · "
+            f"Difficulty: {difficulty_note}"
+        )
+        if st.button("Start Test", type="primary", key=scoped_key("setup_start_test")):
+            start_difficulty = (
+                uss.get("exam_manual_difficulty", "Medium")
+                if not uss["exam_difficulty_mode"]
+                else "Medium"
+            )
+            if _start_exam(
+                uss["exam_type"],
+                setup_duration_secs,
+                uss["exam_subjects"],
+                difficulty_mode=uss["exam_difficulty_mode"],
+                difficulty=start_difficulty,
+            ):
                 st.rerun()
             else:
                 st.error(
-                    "No questions found for this exam type. "
+                    "No questions found for this exam type and subject selection. "
                     "Run `python scripts/seed_bulk_questions.py` or use Admin → Seed practice bank."
                 )
-        c2.button("Pause", disabled=True)
-
-    if c3.button("End Test", disabled=not in_progress):
-        _finish_exam()
-        st.rerun()
+    else:
+        if not running:
+            st.caption(
+                f"Paused · {_format_time(_remaining_seconds())} remaining — "
+                "click **Resume** to continue."
+            )
+        _render_exam_toolbar(running=running, in_progress=in_progress)
 
     if in_progress and running:
         _render_active_exam()

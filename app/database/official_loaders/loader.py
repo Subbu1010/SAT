@@ -1,13 +1,19 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from app.database.official_loaders.forum_verification import collect_verified_forum_questions
 from app.database.official_loaders.opensat_loader import OPENSAT_SOURCE, build_opensat_questions
 from app.database.official_loaders.bluebook_loader import BLUEBOOK_SOURCE, build_bluebook_questions
 from app.database.official_loaders.validation import dedupe_rows, question_fingerprint
+from app.services.question_source import format_batch_name
+from app.utils.datetime_display import CST
+from app.database.insert_retry import insert_batches_resilient, is_transient_db_error
+from app.services.question_cache import clear_question_cache
 from app.database.supabase_client import get_supabase_admin_client, get_supabase_client
 from app.utils.config import get_config
 
-BATCH_SIZE = 50
+BATCH_SIZE = 25
 PAGE_SIZE = 1000
 
 
@@ -133,17 +139,36 @@ def load_official_questions(
     rows, merge_dupes = dedupe_rows(rows)
     stats["merge_duplicates_removed"] = merge_dupes
 
+    load_date = datetime.now(CST)
+    opensat_batch = format_batch_name("OpenSAT", on_date=load_date)
+    bluebook_batch = format_batch_name("Bluebook", on_date=load_date)
+    for row in rows:
+        source = row.get("source")
+        if source == OPENSAT_SOURCE:
+            row["source"] = opensat_batch
+        elif source == BLUEBOOK_SOURCE:
+            row["source"] = bluebook_batch
+
     client = _client()
-    total_batches = (len(rows) + BATCH_SIZE - 1) // BATCH_SIZE
-    for batch_index, start in enumerate(range(0, len(rows), BATCH_SIZE)):
-        batch = rows[start : start + BATCH_SIZE]
+
+    def _insert_batch(batch: list[dict]) -> None:
         client.table("questions").insert(batch).execute()
-        if progress_callback:
-            progress_callback(
-                batch_index + 1,
-                total_batches,
-                f"Inserted {min(start + len(batch), len(rows))}/{len(rows)} questions",
-            )
+
+    try:
+        insert_batches_resilient(
+            rows=rows,
+            insert_batch=_insert_batch,
+            batch_size=BATCH_SIZE,
+            progress_callback=progress_callback,
+        )
+    except Exception as exc:
+        hint = (
+            "Try again in a minute. If it keeps failing, use a stable network connection "
+            "or run the download during off-peak hours."
+        )
+        if is_transient_db_error(exc):
+            return False, f"Network error while uploading questions: {exc}. {hint}"
+        return False, f"Failed while uploading questions: {exc}"
 
     by_exam: dict[str, int] = {}
     by_subject: dict[str, int] = {}
@@ -165,6 +190,7 @@ def load_official_questions(
     )
     bluebook_count = stats.get("bluebook_loaded", 0)
     merge_dupes = stats.get("merge_duplicates_removed", 0)
+    clear_question_cache()
     return (
         True,
         f"Loaded {len(rows)} validated questions (no duplicates). "

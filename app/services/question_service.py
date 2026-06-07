@@ -1,8 +1,25 @@
 from __future__ import annotations
 
 from app.database.supabase_client import get_supabase_client
+from app.services.question_cache import (
+    MOCK_EXAM_POOL_LIMIT,
+    PRACTICE_POOL_LIMIT,
+    _cached_count_questions,
+    _cached_get_questions,
+    _cached_student_batch_context,
+    _cached_topics_for_subject,
+    clear_question_cache,
+)
 
-DEFAULT_QUERY_LIMIT = 10_000
+DEFAULT_QUERY_LIMIT = PRACTICE_POOL_LIMIT
+
+__all__ = [
+    "DEFAULT_QUERY_LIMIT",
+    "MOCK_EXAM_POOL_LIMIT",
+    "PRACTICE_POOL_LIMIT",
+    "QuestionService",
+    "clear_question_cache",
+]
 
 
 class QuestionService:
@@ -10,8 +27,18 @@ class QuestionService:
         self.client = get_supabase_client()
 
     def topics_for_subject(self, subject: str) -> list[str]:
-        result = self.client.table("questions").select("topic").eq("subject", subject).execute()
-        return sorted({row["topic"] for row in (result.data or []) if row.get("topic")})
+        return list(_cached_topics_for_subject(subject))
+
+    def _student_batch_context(self) -> dict[str, str | None]:
+        return _cached_student_batch_context()
+
+    def get_latest_import_source(self) -> str | None:
+        """Return the raw source key for the active student question batch, if any."""
+        return self._student_batch_context().get("raw_source")
+
+    def get_active_student_batch_label(self) -> str:
+        """Human-readable batch name shown to students during practice and mock exams."""
+        return self._student_batch_context().get("display_label") or "OpenSAT-01/01/2026"
 
     def get_questions(
         self,
@@ -19,16 +46,41 @@ class QuestionService:
         subject: str,
         difficulty: str | None = None,
         topic: str | None = None,
+        source: str | None = None,
         limit: int = DEFAULT_QUERY_LIMIT,
     ):
-        query = self.client.table("questions").select("*").eq("exam_type", exam_type).eq(
-            "subject", subject
+        return list(
+            _cached_get_questions(exam_type, subject, difficulty, topic, source, limit)
         )
-        if difficulty:
-            query = query.eq("difficulty", difficulty)
-        if topic:
-            query = query.eq("topic", topic)
-        return query.limit(limit).execute().data or []
+
+    def get_questions_for_students(
+        self,
+        exam_type: str,
+        subject: str,
+        difficulty: str | None = None,
+        topic: str | None = None,
+        limit: int = DEFAULT_QUERY_LIMIT,
+    ):
+        """Prefer the latest admin import batch; otherwise use the full question bank."""
+        latest_source = self.get_latest_import_source()
+        if latest_source:
+            pool = self.get_questions(
+                exam_type=exam_type,
+                subject=subject,
+                difficulty=difficulty,
+                topic=topic,
+                source=latest_source,
+                limit=limit,
+            )
+            if pool:
+                return pool
+        return self.get_questions(
+            exam_type=exam_type,
+            subject=subject,
+            difficulty=difficulty,
+            topic=topic,
+            limit=limit,
+        )
 
     def count_questions(
         self,
@@ -36,19 +88,34 @@ class QuestionService:
         subject: str,
         difficulty: str | None = None,
         topic: str | None = None,
+        source: str | None = None,
     ) -> int:
-        query = (
-            self.client.table("questions")
-            .select("question_id", count="exact")
-            .eq("exam_type", exam_type)
-            .eq("subject", subject)
+        return _cached_count_questions(exam_type, subject, difficulty, topic, source)
+
+    def count_questions_for_students(
+        self,
+        exam_type: str,
+        subject: str,
+        difficulty: str | None = None,
+        topic: str | None = None,
+    ) -> int:
+        latest_source = self.get_latest_import_source()
+        if latest_source:
+            count = self.count_questions(
+                exam_type=exam_type,
+                subject=subject,
+                difficulty=difficulty,
+                topic=topic,
+                source=latest_source,
+            )
+            if count:
+                return count
+        return self.count_questions(
+            exam_type=exam_type,
+            subject=subject,
+            difficulty=difficulty,
+            topic=topic,
         )
-        if difficulty:
-            query = query.eq("difficulty", difficulty)
-        if topic:
-            query = query.eq("topic", topic)
-        result = query.execute()
-        return result.count or 0
 
     def save_attempt(
         self,

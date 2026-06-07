@@ -5,11 +5,73 @@ import time
 from typing import Any
 
 from app.database.supabase_client import get_supabase_client
+from app.services.question_cache import MOCK_EXAM_POOL_LIMIT
 from app.services.question_service import QuestionService
 from app.utils.question_shuffle import shuffle_question_choices, shuffle_questions
 
 SUBJECTS = ["Math", "Reading", "Writing"]
+SUBJECT_CHOICES = ["All subjects", *SUBJECTS]
 DEFAULT_QUESTIONS_PER_SUBJECT = 10
+
+
+def subjects_from_choice(choice: str) -> list[str]:
+    if choice == "All subjects":
+        return list(SUBJECTS)
+    if choice in SUBJECTS:
+        return [choice]
+    return list(SUBJECTS)
+
+
+def _fetch_subject_pool(
+    qs: QuestionService,
+    *,
+    exam_type: str,
+    subject: str,
+    difficulty: str,
+    difficulty_mode: bool,
+) -> list[dict]:
+    if difficulty_mode:
+        pool = qs.get_questions_for_students(
+            exam_type=exam_type,
+            subject=subject,
+            difficulty=difficulty,
+            limit=MOCK_EXAM_POOL_LIMIT,
+        )
+        if not pool:
+            pool = qs.get_questions_for_students(
+                exam_type=exam_type,
+                subject=subject,
+                limit=MOCK_EXAM_POOL_LIMIT,
+            )
+    else:
+        pool = qs.get_questions_for_students(
+            exam_type=exam_type,
+            subject=subject,
+            difficulty=difficulty,
+            limit=MOCK_EXAM_POOL_LIMIT,
+        )
+    return pool
+
+
+def sample_questions_for_subject(
+    pool: list[dict],
+    *,
+    difficulty: str,
+    count: int,
+    exclude_ids: set[str] | None = None,
+) -> list[dict]:
+    excluded = exclude_ids or set()
+    filtered = [
+        q
+        for q in pool
+        if q.get("difficulty") == difficulty and q["question_id"] not in excluded
+    ]
+    if not filtered:
+        filtered = [q for q in pool if q["question_id"] not in excluded]
+    if not filtered:
+        return []
+    pick_count = min(count, len(filtered))
+    return random.sample(filtered, pick_count)
 
 EXAM_SCORE_CONFIG: dict[str, dict[str, int]] = {
     "SAT": {"min": 400, "max": 1600},
@@ -24,20 +86,42 @@ def _exam_score_config(exam_type: str) -> dict[str, int]:
 
 def build_mock_exam(
     exam_type: str,
+    subjects: list[str] | None = None,
     questions_per_subject: int = DEFAULT_QUESTIONS_PER_SUBJECT,
-) -> list[dict]:
-    """Assemble a balanced mock exam from the question bank."""
+    difficulty: str = "Medium",
+    difficulty_mode: bool = True,
+) -> tuple[list[dict], dict[str, list[dict]]]:
+    """Assemble a balanced mock exam and retain per-subject pools for adaptive refresh."""
     qs = QuestionService()
     selected: list[dict] = []
+    pools_by_subject: dict[str, list[dict]] = {}
+    chosen_subjects = [s for s in (subjects or SUBJECTS) if s in SUBJECTS]
+    if not chosen_subjects:
+        return [], {}
 
-    for subject in SUBJECTS:
-        pool = qs.get_questions(exam_type=exam_type, subject=subject, limit=5000)
+    for subject in chosen_subjects:
+        pool = _fetch_subject_pool(
+            qs,
+            exam_type=exam_type,
+            subject=subject,
+            difficulty=difficulty,
+            difficulty_mode=difficulty_mode,
+        )
         if not pool:
             continue
-        count = min(questions_per_subject, len(pool))
-        selected.extend(random.sample(pool, count))
+        pools_by_subject[subject] = pool
+        selected.extend(
+            sample_questions_for_subject(
+                pool,
+                difficulty=difficulty,
+                count=questions_per_subject,
+            )
+        )
 
-    return shuffle_question_choices(shuffle_questions(selected))
+    if not selected:
+        return [], pools_by_subject
+
+    return shuffle_question_choices(shuffle_questions(selected)), pools_by_subject
 
 
 def _normalize_answer(value: str | int | float | None) -> str | None:

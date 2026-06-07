@@ -39,7 +39,7 @@ def render():
     st.caption("Suggested prompts")
     cols = st.columns(4)
     for i, suggestion in enumerate(SUGGESTED_PROMPTS):
-        if cols[i].button(suggestion, key=f"suggest_{i}", use_container_width=True):
+        if cols[i].button(suggestion, key=f"suggest_{i}", width="stretch"):
             scoped_set("tutor_pending_prompt", suggestion)
 
     for msg in scoped_get("tutor_messages", []):

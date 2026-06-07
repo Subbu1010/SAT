@@ -4,6 +4,7 @@ import streamlit as st
 
 from app.authentication.auth_service import AuthService
 from app.services.analytics_service import get_performance_analytics
+from app.utils.datetime_display import format_cst
 
 
 def render():
@@ -35,7 +36,7 @@ def render():
                 labels={"accuracy": "Accuracy %", "topic": "Topic"},
                 text="accuracy",
             ).update_traces(texttemplate="%{text:.1f}%", textposition="outside"),
-            use_container_width=True,
+            width="stretch",
         )
 
         st.subheader("Average time per topic")
@@ -47,7 +48,7 @@ def render():
                 markers=True,
                 labels={"time_spent": "Avg time (seconds)", "topic": "Topic"},
             ),
-            use_container_width=True,
+            width="stretch",
         )
 
         st.subheader("Topic strength overview")
@@ -63,7 +64,7 @@ def render():
             polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
             showlegend=False,
         )
-        st.plotly_chart(radar, use_container_width=True)
+        st.plotly_chart(radar, width="stretch")
 
         with st.expander("Topic details"):
             st.dataframe(
@@ -75,7 +76,7 @@ def render():
                         "attempts": "Attempts",
                     }
                 ),
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
     else:
@@ -93,7 +94,7 @@ def render():
                 labels={"accuracy": "Accuracy %", "subject": "Subject"},
                 text="accuracy",
             ).update_traces(texttemplate="%{text:.1f}%", textposition="outside"),
-            use_container_width=True,
+            width="stretch",
         )
 
     difficulty_perf = data["difficulty_performance"]
@@ -108,7 +109,7 @@ def render():
                 labels={"accuracy": "Accuracy %", "difficulty": "Difficulty"},
                 text="accuracy",
             ).update_traces(texttemplate="%{text:.1f}%", textposition="outside"),
-            use_container_width=True,
+            width="stretch",
         )
 
     exam_history = data["exam_history"]
@@ -122,20 +123,21 @@ def render():
                 markers=True,
                 labels={"score": "SAT points earned", "exam": "Mock exam"},
             ),
-            use_container_width=True,
+            width="stretch",
         )
         with st.expander("Mock exam history"):
-            st.dataframe(
-                exam_history.rename(
-                    columns={
-                        "exam": "Exam",
-                        "score": "SAT score",
-                        "accuracy": "Accuracy %",
-                        "completed_at": "Completed at",
-                    }
-                ),
-                use_container_width=True,
-                hide_index=True,
+            history_display = exam_history.rename(
+                columns={
+                    "exam": "Exam",
+                    "score": "SAT score",
+                    "accuracy": "Accuracy %",
+                    "completed_at": "Completed at (CST)",
+                }
             )
+            if "Completed at (CST)" in history_display.columns:
+                history_display["Completed at (CST)"] = history_display[
+                    "Completed at (CST)"
+                ].map(lambda value: format_cst(value) or "—")
+            st.dataframe(history_display, width="stretch", hide_index=True)
     elif data["total_attempts"]:
         st.caption("Complete a mock exam to see score trends.")

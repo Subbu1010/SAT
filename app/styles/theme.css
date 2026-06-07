@@ -49,6 +49,7 @@ div[data-testid="stStatusWidget"] {
   --surface-glass: rgba(255, 255, 255, 0.75);
   --text: #132a4f;
   --muted: #60738f;
+  --placeholder: #9aadc4;
   --primary: #2d7ff9;
   --primary-strong: #1262e0;
   --success: #1b9c6e;
@@ -87,6 +88,7 @@ div[data-testid="stStatusWidget"] {
   --surface-glass: rgba(26, 39, 64, 0.82);
   --text: #e8eef8;
   --muted: #8fa3bf;
+  --placeholder: #5c708a;
   --primary: #5ba0ff;
   --primary-strong: #2d7ff9;
   --success: #34c38f;
@@ -228,12 +230,35 @@ section[data-testid="stSidebar"] {
   box-shadow: 0 4px 14px rgba(21, 50, 96, 0.12) !important;
 }
 
-[data-testid="stExpandSidebarButton"] button {
+[data-testid="stExpandSidebarButton"] button,
+[data-testid="stSidebarCollapseButton"] button {
   pointer-events: auto !important;
+  background: var(--expand-btn-bg) !important;
+  border: 1px solid var(--border-strong) !important;
+  border-radius: 10px !important;
+  color: var(--text) !important;
+  -webkit-text-fill-color: var(--text) !important;
+  box-shadow: 0 4px 14px rgba(21, 50, 96, 0.12) !important;
 }
 
-[data-testid="stSidebarCollapseButton"] button {
-  border-radius: 10px !important;
+[data-testid="stExpandSidebarButton"] button:hover,
+[data-testid="stSidebarCollapseButton"] button:hover {
+  background: var(--btn-secondary-hover) !important;
+  border-color: var(--primary) !important;
+  color: var(--text) !important;
+}
+
+[data-testid="stExpandSidebarButton"] button svg,
+[data-testid="stSidebarCollapseButton"] button svg,
+[data-testid="stExpandSidebarButton"] button svg path,
+[data-testid="stSidebarCollapseButton"] button svg path,
+[data-testid="stExpandSidebarButton"] button span,
+[data-testid="stSidebarCollapseButton"] button span,
+[data-testid="stExpandSidebarButton"] [data-testid="stIconMaterial"],
+[data-testid="stSidebarCollapseButton"] [data-testid="stIconMaterial"] {
+  color: var(--text) !important;
+  fill: var(--text) !important;
+  stroke: var(--text) !important;
 }
 
 section[data-testid="stSidebar"] > div {
@@ -462,9 +487,23 @@ section[data-testid="stSidebar"] form {
   caret-color: var(--text, #132a4f) !important;
 }
 
+.stApp input:not([type="radio"]):not([type="checkbox"]):placeholder-shown,
+.stApp textarea:placeholder-shown {
+  color: var(--placeholder) !important;
+  -webkit-text-fill-color: var(--placeholder) !important;
+}
+
 .stApp input::placeholder,
 .stApp textarea::placeholder {
-  color: var(--muted) !important;
+  color: var(--placeholder) !important;
+  -webkit-text-fill-color: var(--placeholder) !important;
+  opacity: 1 !important;
+}
+
+.stApp input::-webkit-input-placeholder,
+.stApp textarea::-webkit-input-placeholder {
+  color: var(--placeholder) !important;
+  -webkit-text-fill-color: var(--placeholder) !important;
   opacity: 1 !important;
 }
 
@@ -534,7 +573,8 @@ section[data-testid="stSidebar"] form {
 
 .stApp div[data-testid="stChatInput"] textarea::placeholder,
 .stApp [data-testid="stChatInputTextArea"]::placeholder {
-  color: var(--muted) !important;
+  color: var(--placeholder) !important;
+  -webkit-text-fill-color: var(--placeholder) !important;
   opacity: 1 !important;
 }
 
@@ -558,6 +598,27 @@ section[data-testid="stSidebar"] form {
 .stApp div[data-testid="stVerticalBlockBorderWrapper"] {
   border-color: var(--border-subtle) !important;
   background: var(--surface);
+}
+
+/* Utility embeds must not push page titles down */
+.stApp .main [data-testid="stIFrame"],
+.stApp .main [data-testid="stIFrame"] iframe {
+  display: none !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  overflow: hidden !important;
+}
+
+[data-testid="stSidebar"] [data-testid="stHtml"] {
+  height: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  line-height: 0 !important;
 }
 
 /* Multiple-choice answers — integrated card-style radio rows */
@@ -699,6 +760,46 @@ section[data-testid="stSidebar"] form {
 .stApp [data-testid="stFormSubmitButton"] button * ,
 .stApp [data-testid="stDownloadButton"] button * {
   color: inherit !important;
+}
+
+/* File uploader (Question Management) — dropzone + Upload control */
+.stApp [data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"] {
+  background-color: var(--input-bg) !important;
+  border: 1px solid var(--input-border) !important;
+}
+
+.stApp [data-testid="stFileUploader"] [data-testid="stFileUploaderDropzoneInstructions"],
+.stApp [data-testid="stFileUploader"] [data-testid="stFileUploaderDropzoneInstructions"] span {
+  color: var(--muted) !important;
+}
+
+.stApp [data-testid="stFileUploader"] button {
+  background: var(--btn-secondary-bg) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border-strong) !important;
+  box-shadow: none !important;
+}
+
+.stApp [data-testid="stFileUploader"] button:hover:not(:disabled) {
+  background: var(--btn-secondary-hover) !important;
+  border-color: var(--primary) !important;
+  color: var(--text) !important;
+}
+
+.stApp [data-testid="stFileUploader"] button:disabled {
+  background: var(--btn-disabled-bg) !important;
+  color: var(--btn-disabled-text) !important;
+  border-color: var(--border-subtle) !important;
+}
+
+.stApp [data-testid="stFileUploader"] button *,
+.stApp [data-testid="stFileUploader"] button [data-testid="stIconMaterial"],
+.stApp [data-testid="stFileUploader"] button span,
+.stApp [data-testid="stFileUploader"] button svg,
+.stApp [data-testid="stFileUploader"] button svg path {
+  color: inherit !important;
+  fill: currentColor !important;
+  stroke: currentColor !important;
 }
 
 /* Streamlit 1.58 alerts (st.success / st.error / st.warning / st.info) */

@@ -2,31 +2,30 @@
 
 from __future__ import annotations
 
-import streamlit.components.v1 as components
+import streamlit as st
 
 _REOPEN_SCRIPT = """
 <script>
 (function () {
-  const parentDoc = window.parent.document;
+  const doc = document;
   const FAB_ID = "sat-sidebar-reopen-fab";
-  const EXPAND_SELECTOR = '[data-testid="stExpandSidebarButton"] button';
 
   function removeFab() {
-    const existing = parentDoc.getElementById(FAB_ID);
+    const existing = doc.getElementById(FAB_ID);
     if (existing) existing.remove();
   }
 
   function expandControl() {
-    const host = parentDoc.querySelector('[data-testid="stExpandSidebarButton"]');
+    const host = doc.querySelector('[data-testid="stExpandSidebarButton"]');
     if (!host) return null;
     return host.querySelector("button") || host;
   }
 
   function sidebarIsCollapsed() {
-    const sidebar = parentDoc.querySelector('section[data-testid="stSidebar"]');
+    const sidebar = doc.querySelector('section[data-testid="stSidebar"]');
     if (!sidebar) return false;
     if (sidebar.getAttribute("aria-expanded") === "false") return true;
-    const style = window.parent.getComputedStyle(sidebar);
+    const style = window.getComputedStyle(sidebar);
     const width = sidebar.getBoundingClientRect().width;
     return width < 8 || style.transform.includes("translateX(-");
   }
@@ -48,9 +47,9 @@ _REOPEN_SCRIPT = """
       removeFab();
       return;
     }
-    if (parentDoc.getElementById(FAB_ID)) return;
+    if (doc.getElementById(FAB_ID)) return;
 
-    const button = parentDoc.createElement("button");
+    const button = doc.createElement("button");
     button.id = FAB_ID;
     button.type = "button";
     button.textContent = "☰ Open menu";
@@ -69,17 +68,18 @@ _REOPEN_SCRIPT = """
       "box-shadow:0 4px 14px rgba(45,127,249,0.35)",
     ].join(";");
     button.addEventListener("click", clickExpand);
-    parentDoc.body.appendChild(button);
+    doc.body.appendChild(button);
   }
 
   ensureFab();
   window.setInterval(ensureFab, 400);
   const observer = new MutationObserver(ensureFab);
-  observer.observe(parentDoc.body, {subtree: true, attributes: true, childList: true});
+  observer.observe(doc.body, {subtree: true, attributes: true, childList: true});
 })();
 </script>
 """
 
 
 def inject_sidebar_reopen_fab() -> None:
-    components.html(_REOPEN_SCRIPT, height=0, scrolling=False)
+    """Inject once per run from the sidebar so main content keeps a flush top edge."""
+    st.html(_REOPEN_SCRIPT, unsafe_allow_javascript=True, width="content")

@@ -74,7 +74,7 @@ def render():
             y="questions",
             labels={"questions": "Questions attempted"},
         ),
-        use_container_width=True,
+        width="stretch",
     )
     if weekly["mock"].sum() > 0:
         st.caption("Weekly activity includes practice questions and mock exam questions answered.")
@@ -95,7 +95,7 @@ def render():
                 markers=True,
                 labels={"score": y_label},
             ),
-            use_container_width=True,
+            width="stretch",
         )
         if (monthly["metric"] == "accuracy").any() and (monthly["metric"] == "score").any():
             st.caption("Weeks with mock exams show average score; other weeks show practice accuracy.")

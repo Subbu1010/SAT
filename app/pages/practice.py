@@ -5,7 +5,10 @@ import streamlit as st
 from app.components.question_card import render_question_card
 from app.services.adaptive_engine import next_difficulty
 from app.services.gemini_service import GeminiService
+from app.database.exam_catalog import SUBJECT_TOPICS
+from app.services.question_cache import PRACTICE_POOL_LIMIT
 from app.services.question_service import QuestionService
+from app.services.question_source import display_batch_label
 from app.utils.compact_layout import inject_compact_spacing
 from app.utils.page_session import returned_to_page
 from app.utils.question_shuffle import clear_shuffled_options, shuffled_options, shuffle_questions
@@ -30,7 +33,7 @@ def _build_practice_queue(
     pool_limit: int,
 ) -> list[dict]:
     if difficulty_mode:
-        pool = qs.get_questions(
+        pool = qs.get_questions_for_students(
             exam_type=exam_type,
             subject=subject,
             topic=topic,
@@ -38,14 +41,14 @@ def _build_practice_queue(
             limit=pool_limit,
         )
         if not pool:
-            pool = qs.get_questions(
+            pool = qs.get_questions_for_students(
                 exam_type=exam_type,
                 subject=subject,
                 topic=topic,
                 limit=pool_limit,
             )
     else:
-        pool = qs.get_questions(
+        pool = qs.get_questions_for_students(
             exam_type=exam_type,
             subject=subject,
             topic=topic,
@@ -156,6 +159,7 @@ def render():
 
     st.title("Practice Questions")
     qs = QuestionService()
+    active_batch = qs.get_active_student_batch_label()
     if not scoped_has("practice_results"):
         scoped_set("practice_results", [])
     if not scoped_has("adaptive_difficulty"):
@@ -171,14 +175,10 @@ def render():
         clear_scoped_prefix("topics_")
         _clear_practice_question()
 
-    topics_key = f"topics_{subject}"
-    if not scoped_has(topics_key):
-        scoped_set(
-            topics_key,
-            qs.topics_for_subject(subject)
-            or ["Algebra", "Geometry", "Vocabulary", "Grammar"],
-        )
-    topics = scoped_get(topics_key)
+    topics = SUBJECT_TOPICS.get(
+        subject,
+        ["Algebra", "Geometry", "Vocabulary", "Grammar"],
+    )
     with filter_col3:
         topic = st.selectbox("Topic", ["All"] + topics)
 
@@ -191,7 +191,7 @@ def render():
         else:
             chosen_difficulty = scoped_get("adaptive_difficulty")
 
-    filter_key = (exam_type, subject, topic)
+    filter_key = (active_batch, exam_type, subject, topic)
     topic_filter = None if topic == "All" else topic
     if scoped_get("practice_filter_key") != filter_key:
         scoped_set("practice_filter_key", filter_key)
@@ -215,26 +215,25 @@ def render():
             _clear_practice_question()
         scoped_set("practice_manual_difficulty", chosen_difficulty)
 
-    pool_limit = 10_000
-    total_available = qs.count_questions(
-        exam_type=exam_type,
-        subject=subject,
-        topic=topic_filter,
-    )
+    pool_limit = PRACTICE_POOL_LIMIT
+    count_key = (active_batch, exam_type, subject, topic_filter)
+    if scoped_get("practice_count_key") != count_key:
+        scoped_set("practice_count_key", count_key)
+        scoped_set(
+            "practice_total_available",
+            qs.count_questions_for_students(
+                exam_type=exam_type,
+                subject=subject,
+                topic=topic_filter,
+            ),
+        )
+    total_available = scoped_get("practice_total_available", 0)
     if total_available == 0:
         st.info(
             "No questions found for selected filters. "
             "Run `python scripts/reload_exam_questions.py` or use Admin to download the question bank."
         )
         return
-
-    meta_parts = [
-        f"{total_available} questions (shuffled)",
-        f"Difficulty: {chosen_difficulty}",
-    ]
-    if difficulty_mode:
-        meta_parts.append(_adaptive_status_message(scoped_get("practice_results", [])))
-    st.caption(" · ".join(meta_parts))
 
     queue = _ensure_practice_queue(
         qs,
@@ -257,6 +256,21 @@ def render():
     if not question:
         st.info("No questions available.")
         return
+
+    question_batch = display_batch_label(question.get("source"))
+    queue_position = scoped_get("practice_queue_index", 0) + 1
+    meta_parts = [
+        f"Batch: {question_batch}",
+        f"Question {queue_position} of {len(queue)}",
+        f"Difficulty: {question.get('difficulty', 'Unknown')}",
+        f"Topic: {question.get('topic', '—')}",
+    ]
+    st.caption(" · ".join(meta_parts))
+    if difficulty_mode:
+        st.caption(
+            f"Adaptive target: {chosen_difficulty} · "
+            f"{_adaptive_status_message(scoped_get('practice_results', []))}"
+        )
 
     display_options = shuffled_options(
         question,

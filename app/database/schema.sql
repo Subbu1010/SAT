@@ -80,12 +80,17 @@ create table if not exists public.performance_analytics (
   last_updated timestamptz not null default now()
 );
 
+-- Security audit log for login, logout, failed, and disabled auth events.
+-- ip_address: client IP (or "localhost" in local dev).
+-- location: approximate city/region/country from IP geolocation.
+-- status: success | failed | logout | disabled
 create table if not exists public.login_history (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references public.users(user_id),
   email text,
   ip_address text,
-  status text,
+  location text,
+  status text not null,
   created_at timestamptz not null default now()
 );
 
@@ -172,3 +177,9 @@ do $$ begin
   on public.performance_analytics for all using (auth.uid() = user_id);
 exception when duplicate_object then null;
 end $$;
+
+-- ---------------------------------------------------------------------------
+-- Incremental upgrades for databases created before a column was added.
+-- Safe to re-run. See app/database/migrations/ for the same statements.
+-- ---------------------------------------------------------------------------
+alter table public.login_history add column if not exists location text;

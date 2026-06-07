@@ -1,3 +1,4 @@
+from functools import lru_cache
 from pathlib import Path
 
 import streamlit as st
@@ -14,25 +15,19 @@ from app.components.sidebar import (
 )
 from app.database.bootstrap import run_startup_bootstrap
 from app.utils.page_session import remember_rendered_url
-from app.utils.sidebar_reopen import inject_sidebar_reopen_fab
 from app.utils.theme import inject_app_theme
 from app.utils.user_session import ensure_user_session_scope
 from app.pages import first_login_reset
 
-st.set_page_config(
-    page_title="SAT",
-    page_icon="🎯",
-    layout="wide",
-    initial_sidebar_state=280,
-)
 
-# Hide Share / Edit / GitHub / Deploy chrome on Streamlit Cloud and local dev.
-st.set_option("client.toolbarMode", "viewer")
+@lru_cache(maxsize=1)
+def _theme_css_text() -> str:
+    css_path = Path(__file__).parent / "styles" / "theme.css"
+    return css_path.read_text(encoding="utf-8")
 
 
 def inject_css():
-    css_path = Path(__file__).parent / "styles" / "theme.css"
-    st.markdown(f"<style>{css_path.read_text(encoding='utf-8')}</style>", unsafe_allow_html=True)
+    st.markdown(f"<style>{_theme_css_text()}</style>", unsafe_allow_html=True)
 
 
 def _bootstrap_once() -> None:
@@ -51,7 +46,6 @@ def main():
 
     inject_css()
     inject_app_theme()
-    inject_sidebar_reopen_fab()
 
     auth = AuthService()
     if not auth.is_logged_in() and not st.session_state.get("_cookie_restore_attempted"):
@@ -69,13 +63,14 @@ def main():
             return
 
         pages = build_navigation_pages(auth)
+        user_role = auth.get_user_role()
         # Hidden built-in nav; we render explicit page links in the sidebar.
         navigation = st.navigation(pages, position="hidden")
 
         with st.sidebar:
             render_sidebar_brand()
             render_sidebar_nav(pages)
-            render_sidebar_footer(auth)
+            render_sidebar_footer(auth, role=user_role)
 
         navigation.run()
         remember_rendered_url()

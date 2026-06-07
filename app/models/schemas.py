@@ -41,3 +41,15 @@ class PracticeAttempt(BaseModel):
     is_correct: bool
     time_spent: int
     created_at: datetime
+
+
+class LoginHistory(BaseModel):
+    """Row shape for public.login_history (see app/database/schema.sql)."""
+
+    id: str
+    user_id: str | None = None
+    email: str | None = None
+    ip_address: str | None = None
+    location: str | None = None
+    status: str
+    created_at: datetime

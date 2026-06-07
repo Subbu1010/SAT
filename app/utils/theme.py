@@ -14,7 +14,8 @@ _RADIO_KEY = "sidebar_theme_radio"
 _THEME_TARGETS = """
 .stApp,
 [data-testid="stAppViewContainer"],
-[data-testid="stAppViewContainer"] > section.main
+[data-testid="stAppViewContainer"] > section.main,
+header[data-testid="stHeader"]
 """
 
 _THEME_VARS: dict[str, str] = {
@@ -27,6 +28,7 @@ _THEME_VARS: dict[str, str] = {
   --surface-glass: rgba(255, 255, 255, 0.75);
   --text: #132a4f;
   --muted: #60738f;
+  --placeholder: #9aadc4;
   --primary: #2d7ff9;
   --primary-strong: #1262e0;
   --success: #1b9c6e;
@@ -64,6 +66,7 @@ _THEME_VARS: dict[str, str] = {
   --surface-glass: rgba(26, 39, 64, 0.82);
   --text: #e8eef8;
   --muted: #8fa3bf;
+  --placeholder: #5c708a;
   --primary: #5ba0ff;
   --primary-strong: #2d7ff9;
   --success: #34c38f;
@@ -119,6 +122,22 @@ def inject_app_theme() -> None:
     extra = ""
     if theme == THEME_DARK:
         extra = """
+[data-testid="stExpandSidebarButton"] button,
+[data-testid="stSidebarCollapseButton"] button {
+  background: var(--expand-btn-bg) !important;
+  border: 1px solid var(--border-strong) !important;
+  color: var(--text) !important;
+}
+[data-testid="stExpandSidebarButton"] button svg,
+[data-testid="stSidebarCollapseButton"] button svg,
+[data-testid="stExpandSidebarButton"] button svg path,
+[data-testid="stSidebarCollapseButton"] button svg path,
+[data-testid="stExpandSidebarButton"] button span,
+[data-testid="stSidebarCollapseButton"] button span {
+  color: var(--text) !important;
+  fill: var(--text) !important;
+  stroke: var(--text) !important;
+}
 .stApp section[data-testid="stSidebar"] {
   box-shadow: 4px 0 18px rgba(0, 0, 0, 0.28) !important;
 }
@@ -137,7 +156,22 @@ def inject_app_theme() -> None:
 }
 .stApp div[data-testid="stChatInput"] textarea::placeholder,
 .stApp [data-testid="stChatInputTextArea"]::placeholder {
-  color: var(--muted) !important;
+  color: var(--placeholder) !important;
+  -webkit-text-fill-color: var(--placeholder) !important;
+}
+.stApp [data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"] {
+  background-color: var(--input-bg) !important;
+  border: 1px solid var(--input-border) !important;
+}
+.stApp [data-testid="stFileUploader"] button {
+  background: var(--btn-secondary-bg) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border-strong) !important;
+}
+.stApp [data-testid="stFileUploader"] button *,
+.stApp [data-testid="stFileUploader"] button [data-testid="stIconMaterial"] {
+  color: inherit !important;
+  fill: currentColor !important;
 }
 """
     st.markdown(

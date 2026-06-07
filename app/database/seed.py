@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import streamlit as st
 from supabase import Client
 
 from app.database.bulk_seed import exam_bank_ready, reload_exam_catalog, seed_bulk_questions
@@ -119,11 +120,16 @@ def seed_sample_questions() -> tuple[bool, str]:
 
 def seed_practice_bank() -> tuple[bool, str]:
     """Ensure SAT, PSAT, and PSAT 8/9 banks are populated from the OpenSAT source."""
+    if st.session_state.get("_practice_bank_ready"):
+        return True, f"Practice bank ready for {', '.join(EXAM_TYPES)}."
+
     if exam_bank_ready():
+        st.session_state["_practice_bank_ready"] = True
         return True, f"Practice bank ready for {', '.join(EXAM_TYPES)}."
 
     ok, message = seed_bulk_questions()
     if ok and exam_bank_ready(min_per_exam=200):
+        st.session_state["_practice_bank_ready"] = True
         return True, f"Loaded practice questions for {', '.join(EXAM_TYPES)}. {message}"
     return ok, message
 
