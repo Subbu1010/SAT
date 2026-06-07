@@ -11,11 +11,12 @@ from app.components.answer_selector import (
 )
 from app.services.adaptive_engine import next_difficulty
 from app.services.mock_exam_service import (
-    DEFAULT_QUESTIONS_PER_SUBJECT,
+    MOCK_EXAM_TOTAL_QUESTIONS,
     SUBJECT_CHOICES,
     SUBJECTS,
     build_mock_exam,
     elapsed_seconds,
+    question_counts_per_subject,
     sample_questions_for_subject,
     save_mock_exam,
     score_exam,
@@ -34,14 +35,32 @@ _EXAM_COMPACT_CSS = """
 .exam-chrome { margin-bottom: 0.2rem !important; }
 .exam-chrome + div[data-testid="stHorizontalBlock"] {
   margin-bottom: 0.15rem !important;
+  align-items: center !important;
+  flex-wrap: nowrap !important;
+  gap: 0.5rem !important;
+}
+.exam-chrome + div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+  display: flex;
   align-items: center;
+  min-height: 2.1rem;
 }
 .exam-chrome + div[data-testid="stHorizontalBlock"] button {
-  min-height: 1.65rem;
-  padding: 0.15rem 0.5rem;
-  font-size: 0.8rem;
+  min-height: 2.1rem;
+  padding: 0.25rem 0.65rem;
+  font-size: 0.85rem;
+  width: 100%;
+  margin: 0;
 }
-.exam-nav-block + div[data-testid="stHorizontalBlock"] {
+.exam-chrome + div[data-testid="stHorizontalBlock"] [data-testid="stCaptionContainer"] {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+.exam-chrome + div[data-testid="stHorizontalBlock"] [data-testid="stCaptionContainer"] p {
+  font-size: 0.85rem !important;
+  line-height: 1.2 !important;
+  white-space: nowrap;
+}
+.exam-nav-wrap + div[data-testid="stHorizontalBlock"] {
   overflow-x: auto;
   overflow-y: hidden;
   flex-wrap: nowrap !important;
@@ -49,29 +68,44 @@ _EXAM_COMPACT_CSS = """
   padding-bottom: 0;
   margin-bottom: 0;
 }
-.exam-nav-block + div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+.exam-nav-wrap + div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
   width: auto !important;
-  min-width: 2.1rem;
+  min-width: 3rem;
   flex: 0 0 auto !important;
 }
-.exam-nav-block + div[data-testid="stHorizontalBlock"] button {
+.exam-nav-wrap + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:first-child,
+.exam-nav-wrap + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:last-child {
+  min-width: 2.25rem;
+}
+.exam-nav-wrap + div[data-testid="stHorizontalBlock"] button {
   white-space: nowrap !important;
-  min-width: 2rem;
+  min-width: 2.9rem;
   min-height: 1.55rem;
-  padding: 0.1rem 0.3rem;
+  padding: 0.1rem 0.35rem;
   font-size: 0.72rem;
   line-height: 1;
 }
-div[data-testid="stExpander"]:has(.exam-nav-block) {
+.exam-nav-wrap + div[data-testid="stHorizontalBlock"] button p {
+  white-space: nowrap !important;
+  font-size: 0.72rem !important;
+  line-height: 1 !important;
+  margin: 0 !important;
+}
+.exam-nav-wrap {
   margin-bottom: 0.25rem !important;
 }
-div[data-testid="stExpander"]:has(.exam-nav-block) details {
-  border: none;
-  background: transparent;
+.exam-prev-next + div[data-testid="stHorizontalBlock"] {
+  gap: 0.5rem !important;
+  margin-top: 0.35rem;
 }
-div[data-testid="stExpander"]:has(.exam-nav-block) summary {
-  padding: 0.2rem 0 !important;
-  font-size: 0.82rem;
+.exam-prev-next + div[data-testid="stHorizontalBlock"] button {
+  min-height: 1.75rem;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.72rem;
+  line-height: 1.1;
+}
+.exam-prev-next + div[data-testid="stHorizontalBlock"] button p {
+  font-size: 0.72rem !important;
 }
 .exam-timer-text {
   font-size: 0.95rem;
@@ -228,29 +262,20 @@ def _maybe_finish_expired_exam() -> bool:
     return False
 
 
-def _start_exam(
-    exam_type: str,
-    duration_secs: int,
-    subjects: list[str],
-    *,
-    difficulty_mode: bool,
-    difficulty: str,
-) -> bool:
-    start_difficulty = "Medium" if difficulty_mode else difficulty
+def _start_exam(exam_type: str, duration_secs: int, subjects: list[str]) -> bool:
     questions, pools = build_mock_exam(
         exam_type,
         subjects=subjects,
-        difficulty=start_difficulty,
-        difficulty_mode=difficulty_mode,
+        difficulty="Medium",
+        difficulty_mode=True,
     )
     if not questions:
         return False
 
     uss["exam_type"] = exam_type
     uss["exam_subjects"] = list(subjects)
-    uss["exam_difficulty_mode"] = difficulty_mode
-    uss["exam_manual_difficulty"] = difficulty
-    uss["exam_adaptive_difficulty"] = start_difficulty
+    uss["exam_difficulty_mode"] = True
+    uss["exam_adaptive_difficulty"] = "Medium"
     uss["exam_adaptive_results"] = []
     uss["exam_adaptive_by_question"] = {}
     uss["exam_subject_pools"] = pools
@@ -559,6 +584,59 @@ def _render_flagged_panel(questions: list[dict]) -> None:
             st.divider()
 
 
+def _nav_display_indices(questions: list[dict]) -> list[int]:
+    flagged_only = uss.get("exam_review_flagged_only", False)
+    flagged_idxs = _flagged_indices(questions)
+    if flagged_only:
+        return flagged_idxs
+    return list(range(len(questions)))
+
+
+def _navigate_exam(questions: list[dict], *, direction: int) -> bool:
+    """Move to the previous (-1) or next (+1) question. Returns True if index changed."""
+    flagged_only = uss.get("exam_review_flagged_only", False)
+    flagged_idxs = _flagged_indices(questions)
+    current = uss["exam_index"]
+    total = len(questions)
+
+    if flagged_only:
+        if not flagged_idxs:
+            return False
+        if current not in flagged_idxs:
+            uss["exam_index"] = flagged_idxs[-1] if direction < 0 else flagged_idxs[0]
+            return True
+        pos = flagged_idxs.index(current)
+        new_pos = pos + direction
+        if 0 <= new_pos < len(flagged_idxs):
+            uss["exam_index"] = flagged_idxs[new_pos]
+            return True
+        return False
+
+    new_index = current + direction
+    if 0 <= new_index < total:
+        uss["exam_index"] = new_index
+        return True
+    return False
+
+
+def _can_navigate_exam(questions: list[dict], *, direction: int) -> bool:
+    flagged_only = uss.get("exam_review_flagged_only", False)
+    flagged_idxs = _flagged_indices(questions)
+    current = uss["exam_index"]
+
+    if flagged_only:
+        if not flagged_idxs:
+            return False
+        if current not in flagged_idxs:
+            return True
+        pos = flagged_idxs.index(current)
+        new_pos = pos + direction
+        return 0 <= new_pos < len(flagged_idxs)
+
+    new_index = current + direction
+    return 0 <= new_index < len(questions)
+
+
 def _nav_button_label(
     idx: int,
     questions: list[dict],
@@ -579,67 +657,30 @@ def _render_question_nav(questions: list[dict], total: int) -> None:
     flagged_idxs = _flagged_indices(questions)
     if flagged_only:
         if not flagged_idxs:
-            st.caption("Flag at least one question to use review mode.")
+            st.caption("Flag at least one question to use flagged-only navigation.")
             return
         if uss["exam_index"] not in flagged_idxs:
             uss["exam_index"] = flagged_idxs[0]
             st.rerun()
 
-    display_indices = flagged_idxs if flagged_only else list(range(len(questions)))
+    display_indices = _nav_display_indices(questions)
     nav_disabled = not questions or (flagged_only and not flagged_idxs)
     flagged_ids = set(uss["exam_flagged"])
     answers = uss["exam_answers"]
     current = uss["exam_index"]
     n = len(display_indices)
 
-    st.markdown(
-        """
-        <style>
-        .exam-nav-block + div[data-testid="stHorizontalBlock"] {
-          overflow-x: auto;
-          overflow-y: hidden;
-          flex-wrap: nowrap !important;
-          gap: 0.2rem;
-          padding-bottom: 0.1rem;
-        }
-        .exam-nav-block + div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
-          width: auto !important;
-          min-width: 2.6rem;
-          flex: 0 0 auto !important;
-        }
-        .exam-nav-block + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:first-child,
-        .exam-nav-block + div[data-testid="stHorizontalBlock"] > div[data-testid="column"]:last-child {
-          min-width: 2.4rem;
-        }
-        .exam-nav-block + div[data-testid="stHorizontalBlock"] button {
-          white-space: nowrap !important;
-          min-width: 2.4rem;
-          min-height: 1.85rem;
-          padding: 0.2rem 0.4rem;
-          font-size: 0.78rem;
-          line-height: 1.1;
-        }
-        .exam-nav-block + div[data-testid="stHorizontalBlock"] button p {
-          white-space: nowrap !important;
-        }
-        </style>
-        <div class="exam-nav-block"></div>
-        """,
-        unsafe_allow_html=True,
-    )
+    st.markdown('<div class="exam-nav-wrap"></div>', unsafe_allow_html=True)
     cols = st.columns([1] + [1] * n + [1])
     with cols[0]:
-        if st.button("◀", key=scoped_key("exam_prev"), disabled=nav_disabled, width="stretch"):
-            if flagged_only and flagged_idxs:
-                if current not in flagged_idxs:
-                    uss["exam_index"] = flagged_idxs[-1]
-                else:
-                    pos = flagged_idxs.index(current)
-                    if pos > 0:
-                        uss["exam_index"] = flagged_idxs[pos - 1]
-            elif current > 0:
-                uss["exam_index"] = current - 1
-            st.rerun()
+        if st.button(
+            "◀",
+            key=scoped_key("exam_prev"),
+            disabled=nav_disabled or not _can_navigate_exam(questions, direction=-1),
+            width="stretch",
+        ):
+            if _navigate_exam(questions, direction=-1):
+                st.rerun()
 
     for i, idx in enumerate(display_indices):
         with cols[i + 1]:
@@ -653,17 +694,39 @@ def _render_question_nav(questions: list[dict], total: int) -> None:
                 st.rerun()
 
     with cols[-1]:
-        if st.button("▶", key=scoped_key("exam_next"), disabled=nav_disabled, width="stretch"):
-            if flagged_only and flagged_idxs:
-                if current not in flagged_idxs:
-                    uss["exam_index"] = flagged_idxs[0]
-                else:
-                    pos = flagged_idxs.index(current)
-                    if pos < len(flagged_idxs) - 1:
-                        uss["exam_index"] = flagged_idxs[pos + 1]
-            elif current < total - 1:
-                uss["exam_index"] = current + 1
-            st.rerun()
+        if st.button(
+            "▶",
+            key=scoped_key("exam_next"),
+            disabled=nav_disabled or not _can_navigate_exam(questions, direction=1),
+            width="stretch",
+        ):
+            if _navigate_exam(questions, direction=1):
+                st.rerun()
+
+
+def _render_exam_prev_next(questions: list[dict]) -> None:
+    """Previous / Next controls below the answer choices."""
+    st.markdown('<div class="exam-prev-next"></div>', unsafe_allow_html=True)
+    prev_col, next_col = st.columns(2)
+    with prev_col:
+        if st.button(
+            "Previous",
+            key=scoped_key("exam_bottom_prev"),
+            disabled=not _can_navigate_exam(questions, direction=-1),
+            width="stretch",
+        ):
+            if _navigate_exam(questions, direction=-1):
+                st.rerun()
+    with next_col:
+        if st.button(
+            "Next",
+            key=scoped_key("exam_bottom_next"),
+            type="primary",
+            disabled=not _can_navigate_exam(questions, direction=1),
+            width="stretch",
+        ):
+            if _navigate_exam(questions, direction=1):
+                st.rerun()
 
 
 @st.fragment(run_every=1)
@@ -682,27 +745,27 @@ def _exam_timer_widget(*, running: bool) -> None:
 
 
 def _render_exam_toolbar(*, running: bool, in_progress: bool) -> None:
-    """Single compact row: timer, progress, and exam controls."""
+    """Single row: timer, answered count, pause/resume, and end test."""
     st.markdown('<div class="exam-chrome"></div>', unsafe_allow_html=True)
     answered = len(uss.get("exam_answers", {}))
     total_q = len(uss.get("exam_questions", []))
 
-    t_timer, t_prog, t_pause, t_end = st.columns([1.1, 1.4, 1, 1])
+    t_timer, t_prog, t_pause, t_end = st.columns([1.1, 1.2, 1, 1], gap="small")
     with t_timer:
         _exam_timer_widget(running=running)
     with t_prog:
         st.caption(f"{answered}/{total_q} answered")
     with t_pause:
         if running:
-            if st.button("Pause", key=scoped_key("toolbar_pause")):
+            if st.button("Pause", key=scoped_key("toolbar_pause"), width="stretch"):
                 _pause_exam()
                 st.rerun()
         elif in_progress:
-            if st.button("Resume", type="primary", key=scoped_key("toolbar_resume")):
+            if st.button("Resume", type="primary", key=scoped_key("toolbar_resume"), width="stretch"):
                 _resume_exam()
                 st.rerun()
     with t_end:
-        if st.button("End Test", key=scoped_key("toolbar_end")):
+        if st.button("End Test", key=scoped_key("toolbar_end"), width="stretch"):
             _finish_exam()
             st.rerun()
 
@@ -738,17 +801,7 @@ def _render_active_exam() -> None:
     if uss.get("exam_difficulty_mode"):
         st.caption(_adaptive_status_message(uss.get("exam_adaptive_results", [])))
 
-    nav_col, flag_col = st.columns([4, 1])
-    with nav_col:
-        with st.expander(f"Jump to question ({total})", expanded=False):
-            st.checkbox(
-                "Flagged only",
-                key=scoped_key("exam_review_flagged_only"),
-                help="Show flagged questions only in the navigator.",
-            )
-            _render_question_nav(questions, total)
-            if uss.get("exam_review_flagged_only"):
-                _render_flagged_panel(questions)
+    flag_col, review_col = st.columns([1, 3])
     with flag_col:
         flagged = qid in uss["exam_flagged"]
         if st.button(
@@ -761,6 +814,16 @@ def _render_active_exam() -> None:
             else:
                 uss["exam_flagged"].append(qid)
             st.rerun()
+    with review_col:
+        st.checkbox(
+            "Flagged only",
+            key=scoped_key("exam_review_flagged_only"),
+            help="Navigator shows flagged questions only.",
+        )
+
+    _render_question_nav(questions, total)
+    if uss.get("exam_review_flagged_only"):
+        _render_flagged_panel(questions)
 
     st.markdown('<div class="card question-card">', unsafe_allow_html=True)
     st.markdown(f"### {question.get('question_text', 'Question')}")
@@ -784,6 +847,7 @@ def _render_active_exam() -> None:
             _update_adaptive_for_answer(question, selected)
 
     _sync_exam_answers(questions)
+    _render_exam_prev_next(questions)
 
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -797,9 +861,7 @@ def render():
     with title_col:
         st.title("Timed Mock Exam")
     with action_col:
-        show_start_new = _exam_in_progress() or (
-            uss.get("exam_finished") and uss.get("exam_results")
-        )
+        show_start_new = bool(uss.get("exam_finished") and uss.get("exam_results"))
         if show_start_new and st.button(
             "Start New Exam",
             key=scoped_key("page_top_start_new_exam"),
@@ -850,52 +912,17 @@ def render():
         with setup_col3:
             duration_mins = st.selectbox("Duration (min)", [30, 45, 60], index=2)
         setup_duration_secs = duration_mins * 60
+        uss["exam_difficulty_mode"] = True
 
-        settings_col1, settings_col2 = st.columns(2)
-        with settings_col1:
-            uss["exam_difficulty_mode"] = st.toggle(
-                "Adaptive mode",
-                value=bool(uss.get("exam_difficulty_mode", True)),
-                help="Adjust upcoming question difficulty from your recent answers.",
-            )
-        with settings_col2:
-            if not uss["exam_difficulty_mode"]:
-                manual = uss.get("exam_manual_difficulty", "Medium")
-                if manual not in ("Easy", "Medium", "Hard"):
-                    manual = "Medium"
-                uss["exam_manual_difficulty"] = st.selectbox(
-                    "Difficulty",
-                    ["Easy", "Medium", "Hard"],
-                    index=["Easy", "Medium", "Hard"].index(manual),
-                )
-            else:
-                uss["exam_manual_difficulty"] = uss.get("exam_manual_difficulty", "Medium")
-
-        subject_count = len(uss["exam_subjects"])
-        total_preview = DEFAULT_QUESTIONS_PER_SUBJECT * subject_count
-        difficulty_note = (
-            "adaptive (starts Medium)"
-            if uss["exam_difficulty_mode"]
-            else uss["exam_manual_difficulty"]
-        )
+        counts = question_counts_per_subject(uss["exam_subjects"], total=MOCK_EXAM_TOTAL_QUESTIONS)
+        count_bits = ", ".join(f"{count} {subject}" for subject, count in counts.items())
         st.caption(
             f"Batch: {active_batch} · {uss['exam_subject_choice']} · "
-            f"up to {DEFAULT_QUESTIONS_PER_SUBJECT} per subject ({total_preview} total) · "
-            f"Difficulty: {difficulty_note}"
+            f"{MOCK_EXAM_TOTAL_QUESTIONS} questions ({count_bits}) · "
+            f"Adaptive difficulty"
         )
         if st.button("Start Test", type="primary", key=scoped_key("setup_start_test")):
-            start_difficulty = (
-                uss.get("exam_manual_difficulty", "Medium")
-                if not uss["exam_difficulty_mode"]
-                else "Medium"
-            )
-            if _start_exam(
-                uss["exam_type"],
-                setup_duration_secs,
-                uss["exam_subjects"],
-                difficulty_mode=uss["exam_difficulty_mode"],
-                difficulty=start_difficulty,
-            ):
+            if _start_exam(uss["exam_type"], setup_duration_secs, uss["exam_subjects"]):
                 st.rerun()
             else:
                 st.error(

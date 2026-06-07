@@ -11,7 +11,23 @@ from app.utils.question_shuffle import shuffle_question_choices, shuffle_questio
 
 SUBJECTS = ["Math", "Reading", "Writing"]
 SUBJECT_CHOICES = ["All subjects", *SUBJECTS]
-DEFAULT_QUESTIONS_PER_SUBJECT = 10
+MOCK_EXAM_TOTAL_QUESTIONS = 30
+DEFAULT_QUESTIONS_PER_SUBJECT = MOCK_EXAM_TOTAL_QUESTIONS
+
+
+def question_counts_per_subject(
+    subjects: list[str],
+    total: int = MOCK_EXAM_TOTAL_QUESTIONS,
+) -> dict[str, int]:
+    """Split a fixed exam length across the chosen subjects as evenly as possible."""
+    chosen = [s for s in subjects if s in SUBJECTS]
+    if not chosen:
+        return {}
+    base, remainder = divmod(total, len(chosen))
+    return {
+        subject: base + (1 if index < remainder else 0)
+        for index, subject in enumerate(chosen)
+    }
 
 
 def subjects_from_choice(choice: str) -> list[str]:
@@ -87,11 +103,11 @@ def _exam_score_config(exam_type: str) -> dict[str, int]:
 def build_mock_exam(
     exam_type: str,
     subjects: list[str] | None = None,
-    questions_per_subject: int = DEFAULT_QUESTIONS_PER_SUBJECT,
+    total_questions: int = MOCK_EXAM_TOTAL_QUESTIONS,
     difficulty: str = "Medium",
     difficulty_mode: bool = True,
 ) -> tuple[list[dict], dict[str, list[dict]]]:
-    """Assemble a balanced mock exam and retain per-subject pools for adaptive refresh."""
+    """Assemble a fixed-length mock exam and retain per-subject pools for adaptive refresh."""
     qs = QuestionService()
     selected: list[dict] = []
     pools_by_subject: dict[str, list[dict]] = {}
@@ -99,6 +115,7 @@ def build_mock_exam(
     if not chosen_subjects:
         return [], {}
 
+    counts = question_counts_per_subject(chosen_subjects, total=total_questions)
     for subject in chosen_subjects:
         pool = _fetch_subject_pool(
             qs,
@@ -114,7 +131,7 @@ def build_mock_exam(
             sample_questions_for_subject(
                 pool,
                 difficulty=difficulty,
-                count=questions_per_subject,
+                count=counts[subject],
             )
         )
 

@@ -167,32 +167,23 @@ def _render_login_form(auth: AuthService, *, form_key: str = "login_form") -> No
 def render_guest_sidebar(auth: AuthService) -> None:
     with st.sidebar:
         render_sidebar_brand()
+        st.markdown('<p class="sidebar-section-label">Sign in</p>', unsafe_allow_html=True)
+        st.caption("Use your school account to continue.")
+        _render_login_form(auth, form_key="main_login_form")
         st.markdown('<p class="sidebar-section-label">Appearance</p>', unsafe_allow_html=True)
         render_theme_selector()
         inject_sidebar_reopen_fab()
 
 
+def render_guest_home_page() -> None:
+    from app.pages.guest_home import render
+
+    render()
+
+
 def render_guest_login_page(auth: AuthService) -> None:
-    hero_col, login_col = st.columns([1.35, 1], gap="large")
-    with hero_col:
-        st.markdown(
-            """
-            <div class="welcome-hero">
-              <p class="welcome-kicker">PSAT / SAT Adaptive Learning</p>
-              <h1 class="welcome-title">Prepare smarter with practice, mocks, and AI support.</h1>
-              <p class="welcome-copy">
-                Sign in to access your dashboard, question bank, timed mock exams,
-                analytics, and the AI tutor.
-              </p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    with login_col:
-        with st.container(border=True):
-            st.markdown("### Sign in")
-            st.caption("Use your school account to continue.")
-            _render_login_form(auth, form_key="main_login_form")
+    """Backward-compatible alias for the guest home view."""
+    render_guest_home_page()
 
 
 def render_password_reset_sidebar(auth: AuthService) -> None:

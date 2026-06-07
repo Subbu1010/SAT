@@ -6,7 +6,7 @@ import streamlit as st
 from app.authentication.auth_service import AuthService
 from app.components.sidebar import (
     build_navigation_pages,
-    render_guest_login_page,
+    render_guest_home_page,
     render_guest_sidebar,
     render_password_reset_sidebar,
     render_sidebar_brand,
@@ -77,7 +77,7 @@ def main():
         return
 
     render_guest_sidebar(auth)
-    render_guest_login_page(auth)
+    render_guest_home_page()
 
 
 if __name__ == "__main__":

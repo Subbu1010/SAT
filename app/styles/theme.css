@@ -291,6 +291,10 @@ section[data-testid="stSidebar"] > div {
   color: var(--muted);
 }
 
+section[data-testid="stSidebar"] .stForm {
+  margin-bottom: 0.35rem;
+}
+
 .sidebar-section-label {
   margin: 0.15rem 0 0.45rem;
   font-size: 0.72rem;
