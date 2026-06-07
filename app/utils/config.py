@@ -128,6 +128,6 @@ def get_config() -> AppConfig:
         or "https://generativelanguage.googleapis.com/v1beta/openai/",
         # Gemini-only default model.
         # OPENAI_MODEL is kept as a backward-compatible alias for existing .env files.
-        gemini_model=_first_set("GEMINI_MODEL", "OPENAI_MODEL") or "gemini-2.5-pro",
+        gemini_model=_first_set("GEMINI_MODEL", "OPENAI_MODEL") or "gemini-2.5-flash-lite",
         app_env=_from_secret_or_env("APP_ENV", "development") or "development",
     )
