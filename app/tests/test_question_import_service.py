@@ -26,6 +26,15 @@ def test_build_import_payload_parses_seed_template():
     assert payload[0]["source"] == "test_bank"
 
 
+def test_build_import_payload_omits_blank_estimated_time():
+    df = pd.read_csv(_TEMPLATE).head(1).copy()
+    df["estimated_time"] = ""
+
+    payload = build_import_payload(df, source="test_bank")
+
+    assert "estimated_time" not in payload[0]
+
+
 def test_payload_to_review_dataframe_formats_options():
     payload = build_import_payload(pd.read_csv(_TEMPLATE), source="test_bank")
     review = payload_to_review_dataframe(payload)
@@ -33,6 +42,40 @@ def test_payload_to_review_dataframe_formats_options():
     assert list(review.columns)[0] == "#"
     assert " || " in review.loc[0, "options"]
     assert review.loc[0, "question_text"]
+
+
+def test_payload_to_review_dataframe_mixed_answer_types_are_arrow_safe():
+    import pyarrow as pa
+
+    payload = [
+        {
+            "exam_type": "SAT",
+            "subject": "Math",
+            "topic": "Algebra",
+            "difficulty": "Easy",
+            "question_text": "Numeric answer",
+            "options": ["4", "5", "6"],
+            "answer": 6,
+            "explanation": "Six",
+            "source": "test",
+        },
+        {
+            "exam_type": "SAT",
+            "subject": "Reading",
+            "topic": "Vocab",
+            "difficulty": "Medium",
+            "question_text": "Text answer",
+            "options": ["ONE", "TWO", "THREE", "FOUR"],
+            "answer": "FOUR",
+            "explanation": "Fourth option",
+            "source": "test",
+        },
+    ]
+    review = payload_to_review_dataframe(payload)
+
+    assert review.loc[0, "answer"] == "6"
+    assert review.loc[1, "answer"] == "FOUR"
+    pa.Table.from_pandas(review)
 
 
 def test_parse_upload_bytes_does_not_insert():

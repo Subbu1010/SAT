@@ -134,13 +134,39 @@ def _raise_missing_columns_error(df: pd.DataFrame) -> None:
     )
 
 
+def _normalize_text(value) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    return str(value).strip()
+
+
+_TEXT_FIELDS = (
+    "exam_type",
+    "subject",
+    "topic",
+    "difficulty",
+    "question_text",
+    "answer",
+    "explanation",
+    "passage",
+    "strategy_tip",
+    "skill_category",
+)
+
+
 def _clean_import_row(row: dict, source: str) -> dict:
     cleaned = {key: row.get(key, "") for key in ALLOWED_COLUMNS if key in row}
     cleaned["options"] = _parse_options(cleaned.get("options"))
     cleaned["source"] = source
-    if cleaned.get("estimated_time") not in ("", None):
+    for field in _TEXT_FIELDS:
+        if field in cleaned:
+            cleaned[field] = _normalize_text(cleaned[field])
+    estimated = cleaned.get("estimated_time")
+    if estimated in ("", None) or (isinstance(estimated, float) and pd.isna(estimated)):
+        cleaned.pop("estimated_time", None)
+    else:
         try:
-            cleaned["estimated_time"] = int(float(cleaned["estimated_time"]))
+            cleaned["estimated_time"] = int(float(estimated))
         except (TypeError, ValueError):
             cleaned.pop("estimated_time", None)
     return cleaned
@@ -180,22 +206,25 @@ def payload_to_review_dataframe(payload: list[dict]) -> pd.DataFrame:
         rows.append(
             {
                 "#": index,
-                "exam_type": row.get("exam_type", ""),
-                "subject": row.get("subject", ""),
-                "topic": row.get("topic", ""),
-                "difficulty": row.get("difficulty", ""),
-                "question_text": row.get("question_text", ""),
+                "exam_type": _normalize_text(row.get("exam_type")),
+                "subject": _normalize_text(row.get("subject")),
+                "topic": _normalize_text(row.get("topic")),
+                "difficulty": _normalize_text(row.get("difficulty")),
+                "question_text": _normalize_text(row.get("question_text")),
                 "options": options_display,
-                "answer": row.get("answer", ""),
-                "explanation": row.get("explanation", ""),
-                "passage": row.get("passage", ""),
-                "strategy_tip": row.get("strategy_tip", ""),
-                "estimated_time": row.get("estimated_time", ""),
-                "skill_category": row.get("skill_category", ""),
-                "source": row.get("source", ""),
+                "answer": _normalize_text(row.get("answer")),
+                "explanation": _normalize_text(row.get("explanation")),
+                "passage": _normalize_text(row.get("passage")),
+                "strategy_tip": _normalize_text(row.get("strategy_tip")),
+                "estimated_time": _normalize_text(row.get("estimated_time")),
+                "skill_category": _normalize_text(row.get("skill_category")),
+                "source": _normalize_text(row.get("source")),
             }
         )
-    return pd.DataFrame(rows)
+    review_df = pd.DataFrame(rows)
+    text_columns = [column for column in review_df.columns if column != "#"]
+    review_df[text_columns] = review_df[text_columns].astype(str)
+    return review_df
 
 
 def read_raw_csv_bytes(file_bytes: bytes) -> pd.DataFrame:
