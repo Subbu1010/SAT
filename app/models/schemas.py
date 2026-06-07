@@ -43,6 +43,24 @@ class PracticeAttempt(BaseModel):
     created_at: datetime
 
 
+DisputeStatus = Literal["pending", "accepted", "rejected"]
+
+
+class AnswerDispute(BaseModel):
+    dispute_id: str
+    user_id: str
+    question_id: str
+    selected_answer: str
+    stored_answer: str
+    proposed_answer: str
+    reason: str
+    status: DisputeStatus = "pending"
+    admin_notes: str | None = None
+    reviewed_by: str | None = None
+    reviewed_at: datetime | None = None
+    created_at: datetime
+
+
 class LoginHistory(BaseModel):
     """Row shape for public.login_history (see app/database/schema.sql)."""
 

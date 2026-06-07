@@ -2,6 +2,8 @@ import random
 
 import streamlit as st
 
+from app.components.answer_dispute_form import render_answer_dispute_form
+from app.components.answer_selector import render_answer_review
 from app.components.question_card import render_question_card
 from app.services.adaptive_engine import next_difficulty
 from app.services.gemini_service import GeminiService
@@ -139,16 +141,31 @@ def _advance_practice_queue() -> None:
     scoped_set("practice_queue_index", scoped_get("practice_queue_index", 0) + 1)
 
 
-def _render_feedback(question: dict, feedback: dict) -> None:
+def _render_feedback(
+    question: dict,
+    feedback: dict,
+    display_options: list[str],
+) -> None:
+    st.markdown('<div class="card question-card">', unsafe_allow_html=True)
+    st.markdown(f"### {question.get('question_text', 'Question')}")
+    if question.get("passage"):
+        with st.expander("Passage"):
+            st.write(question["passage"])
+    render_answer_review(
+        display_options,
+        selected=feedback.get("selected"),
+        correct=str(question.get("answer", "")),
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
+
     if feedback["is_correct"]:
         st.success("Correct!")
     else:
         st.error("Incorrect.")
 
-    st.write(f"**Your answer:** {feedback['selected']}")
-    st.write(f"**Correct answer:** {question['answer']}")
     st.write(f"**Explanation:** {question['explanation']}")
-    st.write(f"**Strategy tip:** {question['strategy_tip']}")
+    if question.get("strategy_tip"):
+        st.write(f"**Strategy tip:** {question['strategy_tip']}")
     st.write(f"**Topic:** {question['topic']} | **Difficulty:** {question['difficulty']}")
 
 
@@ -279,13 +296,16 @@ def render():
     feedback = scoped_get("practice_feedback")
 
     if feedback and feedback.get("question_id") == question["question_id"]:
-        st.markdown('<div class="card question-card">', unsafe_allow_html=True)
-        st.markdown(f"### {question.get('question_text', 'Question')}")
-        if question.get("passage"):
-            with st.expander("Passage"):
-                st.write(question["passage"])
-        st.markdown("</div>", unsafe_allow_html=True)
-        _render_feedback(question, feedback)
+        _render_feedback(question, feedback, display_options)
+
+        user = st.session_state.get("auth_user")
+        if user:
+            render_answer_dispute_form(
+                question,
+                user_id=user.id,
+                selected_answer=feedback.get("selected", ""),
+                display_options=display_options,
+            )
 
         if st.button("Next question", type="primary"):
             _advance_practice_queue()

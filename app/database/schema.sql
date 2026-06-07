@@ -94,6 +94,27 @@ create table if not exists public.login_history (
   created_at timestamptz not null default now()
 );
 
+-- Student-reported answer disputes for third-party question imports.
+create table if not exists public.answer_disputes (
+  dispute_id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.users(user_id) on delete cascade,
+  question_id uuid not null references public.questions(question_id) on delete cascade,
+  selected_answer text not null,
+  stored_answer text not null,
+  proposed_answer text not null,
+  reason text not null,
+  status text not null default 'pending'
+    check (status in ('pending','accepted','rejected')),
+  admin_notes text,
+  reviewed_by uuid references public.users(user_id),
+  reviewed_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create unique index if not exists idx_answer_disputes_pending_user_question
+  on public.answer_disputes (user_id, question_id)
+  where status = 'pending';
+
 create table if not exists public.embeddings (
   id uuid primary key default gen_random_uuid(),
   content text not null,
@@ -138,6 +159,7 @@ alter table public.mock_exams enable row level security;
 alter table public.ai_conversations enable row level security;
 alter table public.performance_analytics enable row level security;
 alter table public.login_history enable row level security;
+alter table public.answer_disputes enable row level security;
 
 -- Login history: only service role (admin app) should read/write via SUPABASE_SECRET_KEY.
 -- No client policies = anon/authenticated users cannot access directly.
@@ -175,6 +197,12 @@ end $$;
 do $$ begin
   create policy "students_own_analytics"
   on public.performance_analytics for all using (auth.uid() = user_id);
+exception when duplicate_object then null;
+end $$;
+
+do $$ begin
+  create policy "students_own_disputes"
+  on public.answer_disputes for all using (auth.uid() = user_id);
 exception when duplicate_object then null;
 end $$;
 

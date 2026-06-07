@@ -52,3 +52,37 @@ def render_answer_selector(
     st.markdown("</div>", unsafe_allow_html=True)
     return answer_from_widget(options, picked)
 
+
+def _option_label(index: int) -> str:
+    return chr(65 + index) if index < 26 else str(index + 1)
+
+
+def render_answer_review(
+    options: list[str],
+    *,
+    selected: str | None,
+    correct: str,
+) -> None:
+    """Show read-only answer choices with the student's pick and the correct answer."""
+    st.markdown("**Answer choices**")
+    if not options:
+        st.caption("No answer choices were provided for this question.")
+        if selected:
+            st.write(f"**Your answer:** {selected}")
+        st.write(f"**Correct answer:** {correct}")
+        return
+
+    for index, option in enumerate(options):
+        markers: list[str] = []
+        if option == correct:
+            markers.append("Correct")
+        if selected and option == selected:
+            markers.append("Your answer")
+        marker_text = f" — *{', '.join(markers)}*" if markers else ""
+        st.markdown(f"**{_option_label(index)}.** {option}{marker_text}")
+
+    if selected and selected not in options:
+        st.write(f"**Your answer:** {selected}")
+    if correct not in options:
+        st.write(f"**Correct answer:** {correct}")
+

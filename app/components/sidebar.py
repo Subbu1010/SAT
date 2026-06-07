@@ -95,6 +95,12 @@ def _render_admin() -> None:
     render()
 
 
+def _render_answer_disputes_admin() -> None:
+    from app.pages.answer_disputes_admin import render
+
+    render()
+
+
 def build_navigation_pages(auth: AuthService) -> list[st.Page]:
     role = auth.get_user_role()
     pages = [
@@ -106,6 +112,14 @@ def build_navigation_pages(auth: AuthService) -> list[st.Page]:
     ]
     if role == "admin":
         pages.append(st.Page(_render_admin, title="Admin", icon="🛡️", url_path="admin"))
+        pages.append(
+            st.Page(
+                _render_answer_disputes_admin,
+                title="Answer Disputes",
+                icon="⚖️",
+                url_path="answer-disputes",
+            )
+        )
     return pages
 
 

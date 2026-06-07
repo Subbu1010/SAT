@@ -52,6 +52,31 @@ def ensure_schema() -> tuple[bool, str]:
     return True, "Database schema applied via SUPABASE_DB_URL."
 
 
+def ensure_answer_disputes_table() -> tuple[bool, str]:
+    """Create answer_disputes when SUPABASE_DB_URL is configured."""
+    cfg = get_config()
+    if not cfg.supabase_db_url:
+        return True, ""
+
+    try:
+        import psycopg2
+    except ImportError:
+        return True, ""
+
+    migration_path = Path(__file__).with_name("migrations") / "002_answer_disputes.sql"
+    if not migration_path.exists():
+        return True, ""
+    sql = migration_path.read_text(encoding="utf-8")
+    try:
+        with psycopg2.connect(cfg.supabase_db_url, connect_timeout=10) as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql)
+            conn.commit()
+        return True, "answer_disputes table ensured."
+    except Exception as exc:
+        return False, f"Could not create answer_disputes table: {exc}"
+
+
 def ensure_login_history_location_column() -> tuple[bool, str]:
     """Add login_history.location when SUPABASE_DB_URL is configured."""
     cfg = get_config()
@@ -91,6 +116,9 @@ def run_startup_bootstrap() -> list[tuple[str, str]]:
         loc_ok, loc_msg = ensure_login_history_location_column()
         if loc_msg:
             messages.append(("success" if loc_ok else "info", loc_msg))
+        disputes_ok, disputes_msg = ensure_answer_disputes_table()
+        if disputes_msg:
+            messages.append(("success" if disputes_ok else "info", disputes_msg))
     elif not _tables_exist():
         messages.append(("info", f"Tables not found yet. {_SCHEMA_SQL_HINT}"))
 
