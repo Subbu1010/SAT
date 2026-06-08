@@ -22,9 +22,14 @@ def _cookie_manager() -> stx.CookieManager:
     return stx.CookieManager(key="sat_auth_cookie_manager")
 
 
+def _fetch_cookies() -> dict | None:
+    """Read browser cookies once. CookieManager returns None until the jar is ready."""
+    return _cookie_manager().get_all(key="get_all_cookies")
+
+
 def _cookies_loaded() -> bool:
-    """CookieManager returns None until the browser cookie jar is available."""
-    return _cookie_manager().get_all(key="get_all_cookies") is not None
+    """True when CookieManager has returned the browser cookie jar."""
+    return _fetch_cookies() is not None
 
 
 def save_session_tokens(session, remember_me: bool) -> None:
@@ -67,12 +72,12 @@ def restore_session(client: Client) -> bool:
     if st.session_state.get("is_authenticated") and st.session_state.get("auth_user"):
         return True
 
-    if not _cookies_loaded():
+    cookies = _fetch_cookies()
+    if cookies is None:
         return False
 
-    access = _cookie_manager().get_all(key="get_tokens") or {}
-    refresh = access.get(COOKIE_REFRESH)
-    access_token = access.get(COOKIE_ACCESS)
+    refresh = cookies.get(COOKIE_REFRESH)
+    access_token = cookies.get(COOKIE_ACCESS)
     if not access_token or not refresh:
         return False
 
@@ -98,4 +103,4 @@ def restore_session(client: Client) -> bool:
 
 def wait_for_cookies() -> None:
     """Non-blocking cookie warm-up."""
-    _cookies_loaded()
+    _fetch_cookies()

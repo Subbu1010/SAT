@@ -2,9 +2,20 @@ import random
 
 import streamlit as st
 
-from app.components.answer_dispute_form import render_answer_dispute_form
+from app.components.answer_dispute_modal import (
+    DISPUTE_OPEN_KEY,
+    inject_dispute_modal_cleanup,
+    open_dispute_dialog_if_needed,
+    render_dispute_open_button,
+    show_dispute_feedback_messages,
+)
 from app.components.answer_selector import render_answer_review
 from app.components.question_card import render_question_card
+from app.components.ti84_calculator import (
+    TI84_PAGE_KEYS,
+    inject_ti84_cleanup,
+    render_ti84_batch_row,
+)
 from app.services.adaptive_engine import next_difficulty
 from app.services.gemini_service import GeminiService
 from app.database.exam_catalog import SUBJECT_TOPICS
@@ -250,6 +261,8 @@ def render():
             "No questions found for selected filters. "
             "Run `python scripts/reload_exam_questions.py` or use Admin to download the question bank."
         )
+        inject_ti84_cleanup(TI84_PAGE_KEYS)
+        inject_dispute_modal_cleanup()
         return
 
     queue = _ensure_practice_queue(
@@ -264,6 +277,8 @@ def render():
     )
     if not queue:
         st.info("No questions match the current filters.")
+        inject_ti84_cleanup(TI84_PAGE_KEYS)
+        inject_dispute_modal_cleanup()
         return
 
     if not scoped_has("practice_current_question"):
@@ -272,6 +287,8 @@ def render():
     question = scoped_get("practice_current_question")
     if not question:
         st.info("No questions available.")
+        inject_ti84_cleanup(TI84_PAGE_KEYS)
+        inject_dispute_modal_cleanup()
         return
 
     question_batch = display_batch_label(question.get("source"))
@@ -282,7 +299,12 @@ def render():
         f"Difficulty: {question.get('difficulty', 'Unknown')}",
         f"Topic: {question.get('topic', '—')}",
     ]
-    st.caption(" · ".join(meta_parts))
+    render_ti84_batch_row(
+        " · ".join(meta_parts),
+        page_key="practice",
+        show_calculator=subject == "Math",
+        button_key=scoped_key("practice_ti84_btn"),
+    )
     if difficulty_mode:
         st.caption(
             f"Adaptive target: {chosen_difficulty} · "
@@ -299,19 +321,32 @@ def render():
         _render_feedback(question, feedback, display_options)
 
         user = st.session_state.get("auth_user")
+
+        next_col, dispute_col = st.columns([1, 1])
+        with next_col:
+            if st.button("Next question", type="primary", key=scoped_key("practice_next_btn")):
+                inject_dispute_modal_cleanup()
+                scoped_pop(DISPUTE_OPEN_KEY, None)
+                _advance_practice_queue()
+                _clear_practice_question(question.get("question_id"))
+                st.rerun()
+        with dispute_col:
+            if user and show_dispute_feedback_messages(
+                user_id=user.id,
+                question_id=question["question_id"],
+            ):
+                render_dispute_open_button(question["question_id"])
+
         if user:
-            render_answer_dispute_form(
+            open_dispute_dialog_if_needed(
                 question,
                 user_id=user.id,
-                selected_answer=feedback.get("selected", ""),
+                feedback=feedback,
                 display_options=display_options,
             )
-
-        if st.button("Next question", type="primary"):
-            _advance_practice_queue()
-            _clear_practice_question(question.get("question_id"))
-            st.rerun()
     else:
+        inject_dispute_modal_cleanup()
+        scoped_pop(DISPUTE_OPEN_KEY, None)
         result = render_question_card(question, display_options=display_options)
         if result["submit"]:
             selected = result["selected_option"]

@@ -14,6 +14,8 @@ from app.components.sidebar import (
     render_sidebar_nav,
 )
 from app.database.bootstrap import run_startup_bootstrap
+from app.components.answer_dispute_modal import cleanup_dispute_modal_on_disallowed_pages
+from app.components.ti84_calculator import cleanup_ti84_on_disallowed_pages
 from app.utils.page_session import remember_rendered_url
 from app.utils.theme import inject_app_theme
 from app.utils.user_session import ensure_user_session_scope
@@ -48,9 +50,8 @@ def main():
     inject_app_theme()
 
     auth = AuthService()
-    if not auth.is_logged_in() and not st.session_state.get("_cookie_restore_attempted"):
+    if not auth.is_logged_in():
         auth.restore_from_cookies()
-        st.session_state["_cookie_restore_attempted"] = True
 
     if auth.is_logged_in():
         user = auth.current_user()
@@ -73,6 +74,8 @@ def main():
             render_sidebar_footer(auth, role=user_role)
 
         navigation.run()
+        cleanup_ti84_on_disallowed_pages()
+        cleanup_dispute_modal_on_disallowed_pages()
         remember_rendered_url()
         return
 

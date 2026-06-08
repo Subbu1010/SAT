@@ -73,11 +73,9 @@ def submit_dispute(
             "in the Supabase SQL Editor."
         )
     proposed = proposed_answer.strip()
-    comment = reason.strip()
+    comment = reason.strip() or "No additional comments provided."
     if not proposed:
         raise ValueError("Please choose or enter the answer you believe is correct.")
-    if not comment:
-        raise ValueError("Please explain why you think the stored answer is wrong.")
     if has_pending_dispute(user_id=user_id, question_id=question_id):
         raise ValueError("You already have a pending dispute for this question.")
 

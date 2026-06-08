@@ -9,6 +9,11 @@ from app.components.answer_selector import (
     render_answer_selector,
     restore_answer_widget,
 )
+from app.components.ti84_calculator import (
+    TI84_PAGE_KEYS,
+    inject_ti84_cleanup,
+    render_ti84_batch_row,
+)
 from app.services.adaptive_engine import next_difficulty
 from app.services.mock_exam_service import (
     MOCK_EXAM_TOTAL_QUESTIONS,
@@ -786,17 +791,19 @@ def _render_active_exam() -> None:
     question_batch = display_batch_label(question.get("source"))
     flagged_count = len(uss["exam_flagged"])
     meta_bits = [
+        f"Batch: {question_batch}",
         f"Q{index + 1}/{total}",
-        question_batch,
         str(question.get("subject", "")),
         str(question.get("difficulty", "")),
         f"{flagged_count} flagged",
     ]
     if uss.get("exam_difficulty_mode"):
         meta_bits.append(f"target {uss.get('exam_adaptive_difficulty', 'Medium')}")
-    st.markdown(
-        f'<p class="exam-meta-line">{" · ".join(meta_bits)}</p>',
-        unsafe_allow_html=True,
+    render_ti84_batch_row(
+        " · ".join(meta_bits),
+        page_key="mock_exam",
+        show_calculator=question.get("subject") == "Math",
+        button_key=scoped_key("mock_exam_ti84_btn"),
     )
     if uss.get("exam_difficulty_mode"):
         st.caption(_adaptive_status_message(uss.get("exam_adaptive_results", [])))
@@ -874,6 +881,7 @@ def render():
     active_batch = qs.get_active_student_batch_label()
 
     if uss["exam_finished"] and uss["exam_results"]:
+        inject_ti84_cleanup(TI84_PAGE_KEYS)
         _render_results()
         return
 
@@ -883,6 +891,8 @@ def render():
 
     in_progress = _exam_in_progress()
     running = bool(uss.get("exam_running"))
+    if not (in_progress and running):
+        inject_ti84_cleanup(TI84_PAGE_KEYS)
 
     if in_progress:
         questions = uss.get("exam_questions") or []

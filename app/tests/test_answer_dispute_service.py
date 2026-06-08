@@ -40,16 +40,28 @@ def test_submit_dispute_inserts_row(mock_client, _schema_ready):
 
 
 @patch("app.services.answer_dispute_service.disputes_schema_ready", return_value=True)
-def test_submit_dispute_requires_reason(_schema_ready):
-    with pytest.raises(ValueError, match="explain"):
-        submit_dispute(
-            user_id="user-1",
-            question_id="q-1",
-            selected_answer="B",
-            stored_answer="A",
-            proposed_answer="C",
-            reason="   ",
-        )
+@patch("app.services.answer_dispute_service.get_supabase_client")
+def test_submit_dispute_allows_empty_reason(mock_client, _schema_ready):
+    client = MagicMock()
+    mock_client.return_value = client
+    client.table.return_value.select.return_value.eq.return_value.eq.return_value.eq.return_value.limit.return_value.execute.return_value = MagicMock(
+        data=[]
+    )
+    client.table.return_value.insert.return_value.execute.return_value = MagicMock(
+        data=[{"dispute_id": "d1", "status": "pending"}]
+    )
+
+    submit_dispute(
+        user_id="user-1",
+        question_id="q-1",
+        selected_answer="B",
+        stored_answer="A",
+        proposed_answer="C",
+        reason="   ",
+    )
+
+    insert_row = client.table.return_value.insert.call_args.args[0]
+    assert insert_row["reason"] == "No additional comments provided."
 
 
 @patch("app.services.answer_dispute_service.disputes_schema_ready", return_value=True)
