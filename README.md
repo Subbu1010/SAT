@@ -13,7 +13,7 @@ A production-oriented, multi-user PSAT/SAT preparation platform with adaptive pr
 - Premium Streamlit UI with custom CSS + Plotly
 - Centralized services for future LangChain/LlamaIndex/agent integrations
 
-## Project Structure
+## Project Structure # Updated content
 
 ```text
 app/
