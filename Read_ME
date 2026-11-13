@@ -1,0 +1,157 @@
+online gaming platform
+
+We are extending the platform to record match results and compute per-player score statistics. Each MatchResult represents one player's experience of a single match: player_id is the player the record belongs to, opponent_id is their opponent, and score is that player's score.
+2-1) add_match_result()
+Takes a MatchResult and stores it. Only player_id is validated: if it does not refer to a known player in GameManager, the match result should be ignored.
+
+A match result with a known player_id must still be stored even when opponent_id does not refer to a known player.
+2-2) get_average_score_by_outcome()
+Takes a player ID and returns a dictionary mapping each outcome (WIN, LOSS, DRAW) to the player's average score for that outcome.
+
+Only outcomes the player has at least one result for should appear in the dictionary. Returns an empty dictionary if the player has no match results.
+
+To assist you in testing the new functions, we have provided the test_add_match_result and test_get_average_score_by_outcome tests.
+
+Now that the platform can record match results, we want to summarize the match history between two specific players. For each pair of players, we want to know how each player has performed against the other and when they last played. Each match is recorded twice, once from each player's perspective, using two MatchResult records with the same timestamp.
+3) get_head_to_head()
+Takes two player IDs and returns a HeadToHead object summarizing all matches between them.
+
+The HeadToHead class has been added to represent this summary:
+- wins_player1: number of matches the first player won
+- wins_player2: number of matches the second player won
+- draws: number of matches that ended in a draw
+- total_matches: total number of matches played between them
+- last_result: the outcome of the most recent match from the first player's perspective (None if they have never played)
+- last_match_timestamp: timestamp of the most recent match between them (None if they have never played)
+If the two players have never faced each other, return a HeadToHead with all numeric fields set to 0, last_result set to None, and last_match_timestamp set to None.
+
+To assist you in testing the new function, we have provided the test_get_head_to_head test. 
+
+---------------------------------------------------------------------
+Stock Ledger:
+----------------
+
+We are extending StockLedger to let operations teams preview an incoming update's impact before it's applied, and see total available stock per SKU across all warehouses. This lets operations teams sanity-check incoming updates and monitor stock levels without waiting for changes to take effect.
+
+Add two functions to the StockLedger class.
+2-1) preview_update
+The preview_update function takes an inventory update. It should return the change in on-hand quantity the update would cause, without applying it, following these rules:
+- The change is the update's on-hand quantity minus the record's current on-hand quantity.
+- If the update refers to an unknown SKU and warehouse pair, return None instead of a number.
+2-2) get_available_stock_by_sku
+The get_available_stock_by_sku function takes no arguments. It should return a dictionary mapping each SKU to its total available stock summed across all warehouses.
+
+We now need to identify inventory records that are running low so operations can determine where replenishment is required.
+
+Add one function to the StockLedger class.
+3-1) get_low_stock_report
+The get_low_stock_report function takes a low_stock_threshold and a target_stock value. It should return a list containing one entry for every inventory record that requires replenishment, following these rules:
+- A record requires replenishment when its available stock is less than or equal to the low_stock_threshold.
+- Each entry contains the SKU, warehouse ID, available stock, and shortage quantity.
+- Shortage quantity is target_stock minus available stock.
+- Sort the result by shortage quantity descending, then SKU ascending, then warehouse ID ascending.
+- If low_stock_threshold is negative, target_stock is zero or negative, or target_stock is less than or equal to low_stock_threshold, return an empty list.
+- The function must not modify the inventory records.
+
+Before purchasing additional inventory, operations wants to determine whether excess stock in some warehouses can cover shortages in others.
+
+Add one function to the StockLedger class.
+4-1) get_optimized_transfer_plan
+The get_optimized_transfer_plan function takes a low_stock_threshold, a target_stock value, and a maximum_transfers value. It should create a proposed transfer plan following these rules:
+- Process each SKU independently, in SKU ascending order.
+- A warehouse is a destination when its available stock is less than or equal to the low_stock_threshold.
+- A destination's shortage is the quantity required to reach target_stock.
+- A warehouse is a source when its available stock is greater than target_stock.
+
+---------------------------------------------------------------------
+Gym membership:
+----------------
+
+Gym Membership – Workout Management
+We are currently updating our system to include information about workouts for our members. As part of this update, we have introduced the Workout class, which represents a single workout session for a member. Each object of the Workout class has a unique ID, as well as a start time and end time that are represented in the number of minutes spent from the start of the day.
+
+You can assume that all the Workouts are from the same day.
+
+To implement these changes, we need to add two functions to the Membership class:
+
+2-1) The add_workout function should be used to add a workout session for a member. If the given member does not exist while calling this function, the workout can be ignored.
+
+2-2) The get_average_workout_durations function should calculate the average duration of workouts for each member in minutes and return the results as a map.
+
+3) Implement a get_due_payments function, which returns a dictionary associating each member ID with their due payment.
+
+4) Implement get_gym_buddies function in Membership class. This function returns a dictionary mapping each member ID to a list of (buddy member ID, total overlap duration) pairs, sorted by overlap duration in descending order.
+
+
+
+Food Order & Delivery System Update
+------------------------------------
+System Update: We are updating our system to include delivery session information for orders. Each delivery tracks when it started and when it ended.   
+
+Delivery Class: We introduce a Delivery class. 
+
+Each Delivery has a unique delivery_id, start minute, and end minute representing minutes from the start of the day. 
+An order may have multiple deliveries (e.g., reassignment).   
+2-1) add_delivery(): This function takes an order ID and a Delivery object and associates the delivery with that order. If the association is successful, return True. If the order does not exist, ignore the delivery and return False.   
+
+2-2) get_average_delivery_time_by_restaurant(): This function returns a map from each restaurant ID to the average delivery duration in minutes across all deliveries for that restaurant. Count ALL deliveries for that restaurant across all its orders.   
+To assist you in testing these new functions, we have provided the test_add_delivery and test_get_average_delivery_time_by_restaurant tests.   
+
+
+Delivery Fees: We want to know the delivery fee for each order. Fees are calculated per order, not per delivery.   
+
+A delivery fee is computed in three steps:   
+
+Step 1: Round the order's distance UP to the nearest whole km (1.0 => 1, 1.2 => 2, 2.1 => 3).   
+
+Step 2: Calculate the base fee: 2 for the first km, +1 per extra km (1 km => 2, 2 km =3, 3 km => 4, and so on).   
+
+Step 3: Apply the order value discount:   
+
+order_value >= 50 => fee = 0 (free delivery)   
+order_value >= 30 => fee is 50% off   
+Otherwise => use the base fee   
+
+Example: Order with distance 2.1 km and order value 35.0 - rounded km = 3, base fee = 4, 50% off applies, so fee = 2.0.   
+
+3) Add get_delivery_fees() to OrderManager: This function calculates and returns a map from each order ID to its corresponding fee.   
+To assist you in testing this new function, we have provided the test_get_delivery_fees test.   
+
+------------------------------------
+Physical access:
+
+Physical Access
+We are extending the system to record building access. The new AccessEvent class represents one badge-in/badge-out session for a user. Each event has a unique ID, an entry time, and an exit time, all measured in minutes since the start of the day. All events happen on the same day.
+
+The campus is open from minute 480 (08:00) to minute 1200 (20:00). An event is "after-hours" if it starts before 480 or ends after 1200. Starting exactly at 480 or ending exactly at 1200 still counts as within hours.
+Add two methods to AccessManager:
+1. log_access(user_id, event): associate the event with that user. Return True if the user exists. If the user does not exist, ignore the event and return False.
+2. get_after_hours_users(): return the IDs of all users who have at least one after-hours event, sorted in ascending order. Do not include a user who has no after-hours events, including a user with no events at all.
+The test_log_access and test_get_after_hours_users methods are provided.
+Building Utilization Report
+We are adding a building utilization report. For capacity planning we want to know, for each hour of the day, how many distinct users were present in the building during that hour.
+
+The day is divided into 24 one-hour buckets: hour h covers the minutes from h*60 up to (but not including) (h+1)*60.
+
+For example, hour 0 is minutes 0–59, hour 1 is minutes 60–119, and so on. A user is "present during hour h" if any of their access events overlaps that hour. A session that ends exactly on an hour boundary does not count as present in the next hour (an event covering minutes 120–180 is present in hour 2 only, not hour 3).
+1) Implement get_hourly_occupancy()
+It takes no arguments (other than self) and returns a dictionary mapping each hour to the number of distinct users present during that hour.
+
+Only include hours that have at least one user present; omit hours with no users.
+Example
+Input:
+user 20 has one session: minute 130 to 260
+
+user 21 has one session: minute 200 to 230
+
+
+Output (returned by get_hourly_occupancy()):
+{2: 1, 3: 2, 4: 1}
+
+
+
+Explanation:
+
+User 20's session covers hour 2 (minutes 120–180), hour 3 (180–240), and hour 4 (240–300). User 21's session falls entirely within hour 3. Hour 3 therefore has two users present, 2 and 4 each have only user 20, giving {2: 1, 3: 2, 4: 1}.
+
+The test_get_hourly_occupancy method is provided.
