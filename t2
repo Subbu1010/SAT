@@ -1,0 +1,421 @@
+// package transactions;
+/*
+We are developing a payment transaction monitoring system that tracks accounts and their transactions.
+The system can compute each account's current balance and basic statistics.
+
+Definitions:
+* An "account" has a unique accountId and an owner name.
+* A "transaction" represents money moving in or out of an account.
+  - CREDIT increases the account balance.
+  - DEBIT decreases the account balance.
+* "AccountManager" manages accounts and transactions and provides balance-related methods.
+
+To begin with, we present you with two tasks:
+1-1) Read through and understand the code below. Please take as much time as necessary, and feel free to run it.
+1-2) The test for AccountManager is not passing due to a bug in the code.
+     Make the necessary changes to AccountManager to fix the bug.
+/*
+We are extending our payment transaction monitoring system to support
+basic analytics over transactions.
+
+For this task, we want to calculate the average transaction amount per account.
+
+2) Implement the function getAverageTransactionAmountByAccount in AccountManager that returns
+the average transaction amount for each account.
+
+Requirements:
+- The result should associate each accountId with the average amount of its transactions.
+- Both CREDIT and DEBIT transactions should be considered.
+- Transaction amounts should be treated as absolute values when calculating averages.
+- Accounts with no transactions should not appear in the result.
+- Transactions always refer to valid accounts.
+
+To assist you in testing this new function, we have provided the
+testGetAverageTransactionAmountByAccount test.
+
+3) Implement the function getPaymentFee for each acount ID
+The method should return the total payment fee for each account.
+first 3 transactions are free
+For credit - 1$ per transaction
+For debit - 2$ per transaction.
+return total fee.
+*/
+/*
+We are adding suspicious activity detection to our payment transaction monitoring system.
+
+A suspicious account is defined as follows:
+
+- Consider only DEBIT transactions.
+- A DEBIT transaction is considered "large" if amount >= 50.
+- An account is suspicious if it has 3 or more large DEBIT transactions within ANY 60-second window.
+
+Notes:
+- Transactions are not guaranteed to be inserted in chronological order.
+- You must process transactions in chronological order (by timestampSec) per account.
+- The window is inclusive of endpoints: a transaction at t and another at t+60 are in the same 60-second window.
+
+
+4) Implement getSuspiciousAccounts() in AccountManager. The function should
+return a sorted list of accountIds that have 3 or more large DEBIT
+transactions (amount >= 50) within any 60-second window.
+*/
+
+import java.util.*;
+
+// import org.junit.*;
+
+import java.util.stream.Collectors;
+
+enum TransactionType {
+    CREDIT,
+    DEBIT
+}
+
+class Account {
+    int accountId;
+    String ownerName;
+
+    Account(int accountId, String ownerName) {
+        this.accountId = accountId;
+        this.ownerName = ownerName;
+    }
+}
+
+class Transaction {
+    int transactionId;
+    int accountId;
+    TransactionType type;
+    double amount;     // Always positive in inputs
+    long timestampSec; // Unix-style seconds (monotonic for tests)
+
+    Transaction(int transactionId, int accountId, TransactionType type, double amount, long timestampSec) {
+        this.transactionId = transactionId;
+        this.accountId = accountId;
+        this.type = type;
+        this.amount = amount;
+        this.timestampSec = timestampSec;
+    }
+}
+
+class AccountManager {
+    Map<Integer, Account> accounts = new HashMap<>();
+    List<Transaction> transactions = new ArrayList<>();
+
+    void addAccount(Account account) {
+        accounts.put(account.accountId, account);
+    }
+
+    void addTransaction(Transaction tx) {
+        // Assume input transactions always refer to valid accounts for this question.
+        transactions.add(tx);
+    }
+
+    // Returns the current balance for the given accountId.
+    double getBalance(int accountId) {
+        double balance = 0.0;
+        for (Transaction tx : transactions) {
+            if (tx.accountId == accountId) {
+                if (tx.type == TransactionType.CREDIT) {
+                    balance += tx.amount;
+                }else if(tx.type== TransactionType.DEBIT){
+                    balance-=tx.amount;
+                }
+            }
+        }
+        return balance;
+    }
+
+
+    public Map<Integer, Double> getAverageTransactionAmountByAccount() {
+        Map<Integer, Double> result = new HashMap<>();
+        Map<Integer,List<Transaction>> listTrans = new HashMap<>();
+        for(Transaction t: transactions){
+            listTrans.computeIfAbsent(t.accountId,k->new ArrayList()).add(t);
+        }
+        return listTrans.entrySet().stream().collect(Collectors.toMap(e->e.getKey(),e->e.getValue().stream().mapToDouble(w->w.amount).average().orElse(0.0)));
+    }
+
+    public Map<Integer, Double> getTransactionFees() {
+        Map<Integer, Double> fees = new HashMap<>();
+Map<Integer,List<Transaction>> totalTran=new HashMap<>();
+for(Transaction t: transactions){
+    totalTran.computeIfAbsent(t.accountId,k->new ArrayList()).add(t);
+}
+// ..................OR..............................
+// for(int accountId: totalTran.keySet()){
+//     List<Transaction> list=totalTran.get(accountId);
+//     if(list==null || list.isEmpty()){
+//         fees.put(accountId,0.0);
+//         continue;
+//     }
+//     list.sort(Comparator.comparing(e->e.timestampSec));
+//     int freeLimit=3;
+//     double total=0.0;
+//     for(int i=freeLimit;i<list.size();i++){
+//         Transaction t=list.get(i);
+//         int charge=(t.type==TransactionType.CREDIT)?1:2;
+//         total+=charge;
+//     }
+//     fees.put(accountId,total);
+// }
+// ....................................................
+for(Map.Entry<Integer,List<Transaction>> tran: totalTran.entrySet()){
+    int accountId=tran.getKey();
+    List<Transaction> list=tran.getValue();
+    if(list==null || list.isEmpty()){
+        fees.put(accountId,0.0);
+        continue;
+    }
+    list.sort(Comparator.comparing(t->t.timestampSec));
+    int free=3;
+    double total=0.0;
+    for(int i=free;i<list.size();i++){
+        Transaction t=list.get(i);
+        int charge=(t.type == TransactionType.CREDIT)?1:2;
+        total+=charge;
+    }
+    fees.put(accountId,total);
+}
+        return fees;
+    }
+
+    public List<Integer> getSuspiciousAccounts() {
+        List<Integer> suspicious = new ArrayList<>();
+        Map<Integer,List<Transaction>> totaltran=new HashMap<>();
+        for(Transaction t: transactions){
+            totaltran.computeIfAbsent(t.accountId,k->new ArrayList()).add(t);
+        }
+        
+        for(int accountId:totaltran.keySet()){
+            List<Transaction> debit=totaltran.get(accountId).stream().filter(e->e.type==TransactionType.DEBIT && e.amount>=50).sorted(Comparator.comparing(e->e.timestampSec)).toList();
+            
+            for(int i=0;i<debit.size();i++){
+                int count=1;
+                for(int j=i+1;j<debit.size();j++){
+                    long diff= debit.get(j).timestampSec-debit.get(i).timestampSec;
+                    
+                    if(diff>60){
+                        continue;
+                    }
+                        count++;
+                    if(count==3){
+                        suspicious.add(accountId);
+                        i=debit.size();
+                        break;
+                    }
+                }
+            }
+        }
+        // .........................OR......................
+        // for(Map.Entry<Integer,List<Transaction>> entry: totaltran.entrySet()){
+        //         List<Transaction> debit= entry.getValue().stream().filter(e->e.type==TransactionType.DEBIT && e.amount>=50).sorted(Comparator.comparing(e->e.timestampSec)).toList();
+            
+        //     for(int i=0;i<debit.size();i++){
+        //         int count=1;
+        //         for(int j=i+1;j<debit.size();j++){
+        //             long diff= debit.get(j).timestampSec-debit.get(i).timestampSec;
+                    
+        //             if(diff<=60){
+        //                 count++;
+        //             }else{
+        //                 break;
+        //             }
+        //             if(count>=3){
+        //                 suspicious.add(entry.getKey());
+        //                 i=debit.size();
+        //                 break;
+        //             }
+        //         }
+        //     }
+        // }
+        // ................................................
+        Collections.sort(suspicious);
+        return suspicious;
+    }
+}
+
+public class Main {
+
+    public static void main(String[] args) {
+        testGetBalance_basic();
+        testGetBalance_multipleAccounts();
+        testGetAverageTransactionAmountByAccount();
+        testGetTransactionFees();
+        testGetSuspiciousAccounts();
+        System.out.println("All tests passed.");
+    }
+
+    private static void assertAlmost(double expected, double actual, double eps) {
+        assertTrue("Expected " + expected + " but got " + actual, Math.abs(expected - actual) <= eps);
+    }
+
+    public static void testGetBalance_basic() {
+        System.out.println("Running testGetBalance_basic");
+        AccountManager mgr = new AccountManager();
+        mgr.addAccount(new Account(1, "Alice"));
+
+        mgr.addTransaction(new Transaction(101, 1, TransactionType.CREDIT, 100.0, 1000));
+        mgr.addTransaction(new Transaction(102, 1, TransactionType.DEBIT, 30.0, 1010));
+        mgr.addTransaction(new Transaction(103, 1, TransactionType.DEBIT, 20.0, 1020));
+        mgr.addTransaction(new Transaction(104, 1, TransactionType.CREDIT, 10.0, 1030));
+
+        // Expected balance: 100 - 30 - 20 + 10 = 60
+        assertAlmost(60.0, mgr.getBalance(1), 0.0001);
+    }
+
+    public static void testGetBalance_multipleAccounts() {
+        System.out.println("Running testGetBalance_multipleAccounts");
+        AccountManager mgr = new AccountManager();
+        mgr.addAccount(new Account(1, "Alice"));
+        mgr.addAccount(new Account(2, "Bob"));
+
+        mgr.addTransaction(new Transaction(201, 1, TransactionType.CREDIT, 50.0, 2000));
+        mgr.addTransaction(new Transaction(202, 2, TransactionType.CREDIT, 80.0, 2005));
+        mgr.addTransaction(new Transaction(203, 1, TransactionType.DEBIT, 10.0, 2010));
+        mgr.addTransaction(new Transaction(204, 2, TransactionType.DEBIT, 5.5, 2015));
+        mgr.addTransaction(new Transaction(205, 2, TransactionType.DEBIT, 14.5, 2020));
+
+        // Account 1: 50 - 10 = 40
+        assertAlmost(40.0, mgr.getBalance(1), 0.0001);
+        // Account 2: 80 - 5.5 - 14.5 = 60
+        assertAlmost(60.0, mgr.getBalance(2), 0.0001);
+    }
+
+    public static void testGetAverageTransactionAmountByAccount() {
+        System.out.println("Running testGetAverageTransactionAmountByAccount");
+        AccountManager mgr = new AccountManager();
+
+        mgr.addAccount(new Account(1, "Alice"));
+        mgr.addAccount(new Account(2, "Bob"));
+        mgr.addAccount(new Account(3, "Charlie")); // no transactions
+
+        // Account 1: 100, 30, 20, 10 => avg = 160/4 = 40
+        mgr.addTransaction(new Transaction(101, 1, TransactionType.CREDIT, 100.0, 1000));
+        mgr.addTransaction(new Transaction(102, 1, TransactionType.DEBIT, 30.0, 1010));
+        mgr.addTransaction(new Transaction(103, 1, TransactionType.DEBIT, 20.0, 1020));
+        mgr.addTransaction(new Transaction(104, 1, TransactionType.CREDIT, 10.0, 1030));
+
+        // Account 2: 80, 5.5, 14.5 => avg = 100/3 = 33.333...
+        mgr.addTransaction(new Transaction(201, 2, TransactionType.CREDIT, 80.0, 2005));
+        mgr.addTransaction(new Transaction(202, 2, TransactionType.DEBIT, 5.5, 2015));
+        mgr.addTransaction(new Transaction(203, 2, TransactionType.DEBIT, 14.5, 2020));
+
+        Map<Integer, Double> avg = mgr.getAverageTransactionAmountByAccount();
+
+        assertAlmost(40.0, avg.get(1), 0.0001);
+        assertAlmost(33.3333, avg.get(2), 0.0001);
+
+        // Account 3 has no transactions -> should not be present
+        assertFalse(avg.containsKey(3));
+    }
+
+    public static void testGetTransactionFees() {
+        System.out.println("Running testGetTransactionFees");
+        AccountManager mgr = new AccountManager();
+
+        mgr.addAccount(new Account(1, "Alice"));
+        mgr.addAccount(new Account(2, "Bob"));
+        mgr.addAccount(new Account(3, "Jane"));
+
+        // Account 1: 5 transactions
+        mgr.addTransaction(new Transaction(1, 1, TransactionType.CREDIT, 100.0, 1000));
+        mgr.addTransaction(new Transaction(2, 1, TransactionType.DEBIT, 20.0, 1010));
+        mgr.addTransaction(new Transaction(3, 1, TransactionType.CREDIT, 10.0, 1020));
+        mgr.addTransaction(new Transaction(4, 1, TransactionType.DEBIT, 5.0, 1030));  // fee: $2
+        mgr.addTransaction(new Transaction(5, 1, TransactionType.CREDIT, 7.0, 1040)); // fee: $1
+
+        // Account 2: 4 transactions
+        mgr.addTransaction(new Transaction(6, 2, TransactionType.DEBIT, 50.0, 2000));
+        mgr.addTransaction(new Transaction(7, 2, TransactionType.DEBIT, 10.0, 2010));
+        mgr.addTransaction(new Transaction(8, 2, TransactionType.CREDIT, 20.0, 2020));
+        mgr.addTransaction(new Transaction(9, 2, TransactionType.DEBIT, 5.0, 2030)); // fee: $2
+
+        // Account 3: 4 transactions
+        mgr.addTransaction(new Transaction(26, 3, TransactionType.DEBIT, 50.0, 2000));
+        mgr.addTransaction(new Transaction(27, 3, TransactionType.DEBIT, 10.0, 2010));
+        mgr.addTransaction(new Transaction(28, 3, TransactionType.CREDIT, 20.0, 2020)); // should be 4th → $1
+        mgr.addTransaction(new Transaction(29, 3, TransactionType.DEBIT, 5.0, 2005));
+
+
+        Map<Integer, Double> fees = mgr.getTransactionFees();
+
+        // Account 1: $2 + $1 = $3
+        assertAlmost(3.0, fees.get(1), 0.0001);
+
+        // Account 2: $2
+        assertAlmost(2.0, fees.get(2), 0.0001);
+
+        // Account 3: 4th transaction (chronologically) is CREDIT → $1
+        assertAlmost(1.0, fees.get(3), 0.0001);
+    }
+
+    public static void testGetSuspiciousAccounts() {
+        System.out.println("Running testGetSuspiciousAccounts");
+
+        AccountManager mgr = new AccountManager();
+        mgr.addAccount(new Account(1, "Alice"));
+        mgr.addAccount(new Account(2, "Bob"));
+        mgr.addAccount(new Account(3, "Charlie"));
+
+        // Account 1: three large debits within 60 seconds -> suspicious
+        mgr.addTransaction(new Transaction(1, 1, TransactionType.DEBIT, 50.0, 1000));
+        mgr.addTransaction(new Transaction(2, 1, TransactionType.DEBIT, 70.0, 1030));
+        mgr.addTransaction(new Transaction(3, 1, TransactionType.DEBIT, 90.0, 1060)); // 1000..1060 inclusive => suspicious
+
+        // Account 2: three large debits but spread out > 60 seconds -> NOT suspicious
+        mgr.addTransaction(new Transaction(4, 2, TransactionType.DEBIT, 60.0, 2000));
+        mgr.addTransaction(new Transaction(5, 2, TransactionType.DEBIT, 80.0, 2070));
+        mgr.addTransaction(new Transaction(6, 2, TransactionType.DEBIT, 55.0, 2141)); // no 60-sec window contains all 3
+
+        // Account 3: has credits and small debits; should not be suspicious
+        mgr.addTransaction(new Transaction(7, 3, TransactionType.CREDIT, 1000.0, 3000));
+        mgr.addTransaction(new Transaction(8, 3, TransactionType.DEBIT, 49.99, 3010));
+        mgr.addTransaction(new Transaction(9, 3, TransactionType.DEBIT, 50.0, 3020));
+        mgr.addTransaction(new Transaction(10, 3, TransactionType.DEBIT, 50.0, 3100)); // only 2 large debits within any window
+
+        List<Integer> suspicious = mgr.getSuspiciousAccounts();
+        assertEquals(Arrays.asList(1), suspicious);
+
+        // Second test case: input order is shuffled; should still detect
+        mgr = new AccountManager();
+        mgr.addAccount(new Account(10, "Daisy"));
+
+        mgr.addTransaction(new Transaction(100, 10, TransactionType.DEBIT, 50.0, 500));
+        mgr.addTransaction(new Transaction(101, 10, TransactionType.DEBIT, 50.0, 560));
+        mgr.addTransaction(new Transaction(102, 10, TransactionType.DEBIT, 50.0, 530)); // out of order
+        // 500, 530, 560 => within 60 inclusive => suspicious
+
+        suspicious = mgr.getSuspiciousAccounts();
+        assertEquals(Arrays.asList(10), suspicious);
+    }
+    
+    //without junit
+    private static void assertFalse(boolean condition) {
+    if (!condition) {
+        System.out.println("PASS");
+    } else {
+        System.out.println("FAIL: condition was true");
+    }
+}
+
+//without junit
+private static void assertEquals(List<Integer> expected, List<Integer> actual) {
+    if (expected.equals(actual)) {
+        System.out.println("PASS");
+    } else {
+        System.out.println("FAIL: expected " + expected + " but got " + actual);
+    }
+}
+//without junit
+    public static void assertTrue(String message,boolean condition){
+        if(!condition){
+        System.out.println("Test failed : "+ message);
+        }else {
+        System.out.println("Pass");
+    }
+    }
+
+
+
+
+}
