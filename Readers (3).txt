@@ -1,0 +1,387 @@
+
+Onboarding Status Check
+
+Question
+
+We are building a program to manage employee onboarding at a company. Each new employee is assigned a set of onboarding steps that must be completed before their onboarding is considered finished. Steps are assigned to owners (HR staff, IT, managers) who are responsible for completing them.
+
+Definitions:
+
+An employee is an object representing a new hire. It has properties for the employee ID, name, and start date (integer day number since a reference point).
+
+An onboarding step is a task that must be completed as part of an employee's onboarding. It has properties for the step ID, employee ID, step name, status, owner ID, and deadline (integer day number).
+
+An OnboardingManager is the class used to manage all employees and their onboarding steps.
+
+To begin with, we present you with two tasks:
+
+1-1) Read through and understand the code below. Please take as much time as necessary, and feel free to run the code.
+
+1-2) One of the tests is failing due to a bug in the code. Make the necessary changes to OnboardingManager to fix the bug.
+
+
+Assigning and Summarizing Workload
+
+Question
+
+As onboarding workflows are managed, steps need to be reassigned to different owners, and HR managers need a view of how much active work each owner currently has.
+
+Add the following functions to OnboardingManager:
+
+2-1) assign_step()
+
+This function takes a step_id and an owner_id, and reassigns the given step to the specified owner. Return True if the step was found and updated, or False if the step does not exist.
+
+2-2) get_workload_summary()
+
+This function returns a map from owner_id to the number of steps currently assigned to them that are not COMPLETED.
+
+Only include owners who have at least one non-completed step.
+
+Owners whose steps are all COMPLETED should not appear.
+
+To assist you in testing these new functions, we have provided the test_assign_step and test_get_workload_summary functions.
+
+
+Step Readiness Check
+
+Question
+
+We are adding a readiness check to help onboarding coordinators see what work can start next. Not all onboarding steps can be started immediately - some depend on earlier steps being finished first. A step is ready to start only when all steps with a lower step ID for the same employee are already COMPLETED.
+
+Add the following function to OnboardingManager:
+
+3) get_ready_steps()
+
+This function takes an employee_id and returns the onboarding steps that are ready to start for the given employee - steps that are PENDING and whose prerequisites (all lower-numbered steps) are fully COMPLETED.
+
+Rules:
+
+Only PENDING steps can be ready to start.
+
+A PENDING step is ready only if every step with a lower step_id for the same employee is COMPLETED.
+
+Return steps sorted by step_id ascending.
+
+Return an empty list if no steps are ready.
+
+To assist you in testing this new function, we have provided the test_get_ready_steps function.
+
+
+Owner Impact Report
+
+Question
+
+HR leadership wants to identify which owners are creating the most bottlenecks across all onboarding workflows. An owner is considered to be blocking an employee's onboarding when they hold the first non-completed step in that employee's sequence and that step is IN_PROGRESS or BLOCKED.
+
+Add the following function to OnboardingManager:
+
+4) get_owner_impact_report()
+
+This function returns a list of OwnerImpact objects (already defined in the starter code), one per owner who is currently blocking at least one employee, where each entry contains:
+
+owner_id: the ID of the owner.
+
+blocked_count: the number of distinct employees that owner is currently blocking.
+
+An owner is blocking an employee when the first non-completed step in that employee's step sequence (ordered by step_id ascending) is assigned to that owner and has status IN_PROGRESS or BLOCKED.
+
+A PENDING first step means no owner is blocking that employee.
+
+Sort the result by blocked_count descending. Break ties by owner_id ascending.
+
+Return an empty list if no owners are blocking any employees.
+
+To assist you in testing this new function, we have provided the test_get_owner_impact_report function.
+
+
+
+/*
+We are building a program to manage employee onboarding at a company.
+Each new employee is assigned a set of onboarding steps that must be
+completed before their onboarding is considered finished. Steps are
+assigned to owners (HR staff, IT, managers) who are responsible for
+completing them.
+
+Definitions:
+- An "Employee" is an object representing a new hire. It has properties
+  for the employee ID, name, and start date (integer day number since
+  a reference point).
+- An "OnboardingStep" is a task that must be completed as part of an
+  employee's onboarding. It has properties for the step ID, employee ID,
+  step name, status, owner ID, and deadline (integer day number).
+- An "OnboardingManager" is the class used to manage all employees and
+  their onboarding steps.
+
+To begin with, we present you with two tasks:
+1-1) Read through and understand the code below. Feel free to run it.
+1-2) One of the tests is failing due to a bug in the code. Make the
+     necessary changes to OnboardingManager to fix the bug.
+*/
+
+import java.util.*;
+import org.junit.Test;
+import org.junit.runner.JUnitCore;
+import org.junit.runner.Result;
+import org.junit.runner.notification.Failure;
+import static org.junit.Assert.*;
+
+public class Solution {
+
+    enum StepStatus {
+        /**
+         * PENDING means the step has not been started yet.
+         * IN_PROGRESS means the step is currently being worked on.
+         * COMPLETED means the step has been finished.
+         * BLOCKED means the step cannot proceed due to a dependency.
+         */
+        PENDING,
+        IN_PROGRESS,
+        COMPLETED,
+        BLOCKED
+    }
+
+    /** Data about a new hire. */
+    static class Employee {
+        final int employeeId;
+        final String name;
+        final int startDate;
+
+        Employee(int employeeId, String name, int startDate) {
+            this.employeeId = employeeId;
+            this.name = name;
+            this.startDate = startDate;
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            if (!(other instanceof Employee e)) return false;
+            return employeeId == e.employeeId;
+        }
+
+        @Override
+        public int hashCode() {
+            return Integer.hashCode(employeeId);
+        }
+
+        @Override
+        public String toString() {
+            return "Employee ID: " + employeeId
+                    + ", Name: " + name
+                    + ", Start Date: " + startDate;
+        }
+    }
+
+    /** Data about a single onboarding task. */
+    static class OnboardingStep {
+        final int stepId;
+        final int employeeId;
+        final String name;
+        StepStatus status;
+        int ownerId;
+        final int deadline;
+
+        OnboardingStep(int stepId, int employeeId, String name,
+                       StepStatus status, int ownerId, int deadline) {
+            this.stepId = stepId;
+            this.employeeId = employeeId;
+            this.name = name;
+            this.status = status;
+            this.ownerId = ownerId;
+            this.deadline = deadline;
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            if (!(other instanceof OnboardingStep s)) return false;
+            return stepId == s.stepId;
+        }
+
+        @Override
+        public int hashCode() {
+            return Integer.hashCode(stepId);
+        }
+
+        @Override
+        public String toString() {
+            return "Step ID: " + stepId
+                    + ", Employee ID: " + employeeId
+                    + ", Name: " + name
+                    + ", Status: " + status
+                    + ", Owner: " + ownerId
+                    + ", Deadline: " + deadline;
+        }
+    }
+
+    /**
+     * Manages employee onboarding workflows.
+     * Employees are identified by employeeId.
+     * Steps are stored and can be queried or updated.
+     * Onboarding is complete only when ALL steps for an employee
+     * are COMPLETED.
+     */
+    static class OnboardingManager {
+        final List<Employee> employees = new ArrayList<>();
+        final List<OnboardingStep> steps = new ArrayList<>();
+
+        /** Adds a new employee to the system. */
+        void addEmployee(Employee employee) {
+            employees.add(employee);
+        }
+
+        /** Adds an onboarding step for an employee. */
+        void addStep(OnboardingStep step) {
+            steps.add(step);
+        }
+
+        /**
+         * Updates the status of a step by ID.
+         * Returns true if found and updated, false otherwise.
+         */
+        boolean updateStepStatus(int stepId, StepStatus status) {
+            for (OnboardingStep step : steps) {
+                if (step.stepId == stepId) {
+                    step.status = status;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /**
+         * Returns true if ALL onboarding steps for the given employee
+         * are COMPLETED. Returns false if any step is not yet
+         * COMPLETED or if the employee has no steps.
+         */
+        boolean isOnboardingComplete(int employeeId) {
+            List<OnboardingStep> employeeSteps = new ArrayList<>();
+            for (OnboardingStep step : steps) {
+                if (step.employeeId == employeeId)
+                    employeeSteps.add(step);
+            }
+
+            if (employeeSteps.isEmpty()) return false;
+
+            for (OnboardingStep step : employeeSteps) {
+                if (step.status == StepStatus.COMPLETED)
+                    return true;
+            }
+            return false;
+        }
+
+        /** Returns all onboarding steps for a given employee. */
+        List<OnboardingStep> getStepsForEmployee(int employeeId) {
+            List<OnboardingStep> result = new ArrayList<>();
+            for (OnboardingStep step : steps) {
+                if (step.employeeId == employeeId)
+                    result.add(step);
+            }
+            return result;
+        }
+    }
+
+    public static class TestSuite {
+        // These tests are not meant to be exhaustive,
+        // and primarily show usage.
+
+        @Test
+        public void testAddEmployeeAndSteps() {
+            OnboardingManager manager = new OnboardingManager();
+
+            Employee emp = new Employee(1, "Alice Johnson", 100);
+            manager.addEmployee(emp);
+
+            OnboardingStep step1 = new OnboardingStep(
+                    1, 1, "Submit Documents",
+                    StepStatus.PENDING, 10, 105);
+
+            OnboardingStep step2 = new OnboardingStep(
+                    2, 1, "IT Setup",
+                    StepStatus.PENDING, 20, 107);
+
+            OnboardingStep step3 = new OnboardingStep(
+                    3, 1, "Manager Meeting",
+                    StepStatus.PENDING, 30, 110);
+
+            manager.addStep(step1);
+            manager.addStep(step2);
+            manager.addStep(step3);
+
+            assertEquals(1, manager.employees.size());
+            assertEquals(3, manager.steps.size());
+        }
+
+        @Test
+        public void testOnboardingCompleteWhenAllDone() {
+            OnboardingManager manager = new OnboardingManager();
+
+            manager.addEmployee(
+                    new Employee(1, "Alice Johnson", 100));
+
+            manager.addStep(new OnboardingStep(
+                    1, 1, "Submit Documents",
+                    StepStatus.COMPLETED, 10, 105));
+
+            manager.addStep(new OnboardingStep(
+                    2, 1, "IT Setup",
+                    StepStatus.COMPLETED, 20, 107));
+
+            manager.addStep(new OnboardingStep(
+                    3, 1, "Manager Meeting",
+                    StepStatus.COMPLETED, 30, 110));
+
+            assertTrue(manager.isOnboardingComplete(1));
+        }
+
+        @Test
+        public void testOnboardingNotCompleteWhenPartiallyDone() {
+            OnboardingManager manager = new OnboardingManager();
+
+            manager.addEmployee(
+                    new Employee(1, "Alice Johnson", 100));
+
+            manager.addStep(new OnboardingStep(
+                    1, 1, "Submit Documents",
+                    StepStatus.COMPLETED, 10, 105));
+
+            manager.addStep(new OnboardingStep(
+                    2, 1, "IT Setup",
+                    StepStatus.IN_PROGRESS, 20, 107));
+
+            manager.addStep(new OnboardingStep(
+                    3, 1, "Manager Meeting",
+                    StepStatus.PENDING, 30, 110));
+
+            // Only one step is COMPLETED - onboarding
+            // should NOT be complete.
+            assertFalse(manager.isOnboardingComplete(1));
+        }
+
+        @Test
+        public void testOnboardingNotCompleteWhenNoSteps() {
+            OnboardingManager manager = new OnboardingManager();
+
+            manager.addEmployee(
+                    new Employee(1, "Alice Johnson", 100));
+
+            assertFalse(manager.isOnboardingComplete(1));
+        }
+    }
+
+    public static void main(String[] args) {
+        Result result = JUnitCore.runClasses(TestSuite.class);
+
+        for (Failure failure : result.getFailures()) {
+            System.out.println(failure.getTrace());
+        }
+
+        if (result.wasSuccessful()) {
+            System.out.println("All tests passed successfully.");
+        } else {
+            System.err.println("Tests failed: "
+                    + result.getFailureCount()
+                    + " test(s) failed.");
+            System.exit(1);
+        }
+    }
+}

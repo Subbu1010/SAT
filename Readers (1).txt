@@ -1,0 +1,196 @@
+
+Calculate Tiered Monthly Billing
+
+Question
+
+Finance wants each user's monthly charge derived from their plan and any paid overrides, so support teams can grant extra capabilities without a manual invoicing step.
+
+Add one function to the FeatureService class.
+
+3-1) calculate_monthly_charge
+
+The calculate_monthly_charge function takes a user_id and returns that user's total monthly charge, following these rules:
+
+If the user has no assigned plan, return 0.
+
+The user's plan determines the base price: BASIC costs 99, PROFESSIONAL costs 399, and ENTERPRISE costs 999.
+
+Each billable override adds a surcharge of 150; an override is billable only if it enables a feature the plan doesn't already provide by default (a feature undefined in the plan counts as not enabled), and disabling overrides are never billable.
+
+At 3 or more billable overrides, the surcharge subtotal is discounted to 85%, rounded down to the nearest whole number; the base price is never discounted.
+
+Return the base price plus the final surcharge.
+
+
+Feature Entitlements
+
+We are building Feature Entitlements, a back-end system that manages feature access for a SaaS platform through subscription plans and per-user overrides. This lets product and support teams control which capabilities each customer can use without a deploy for every plan change.
+
+Definitions:
+
+A "plan" is one of a fixed set of subscription tiers a user can be assigned to. A plan determines which features are enabled by default. A plan can be one of:
+- BASIC
+- PROFESSIONAL
+- ENTERPRISE
+
+A "feature" is a named platform capability (for example, "analytics" or "exports") that can be enabled or disabled per plan, and further overridden for an individual user.
+
+planFeatures maps each plan to a map of feature names and whether that feature is enabled by default for that plan.
+
+userPlans maps a userId to the plan currently assigned to that user.
+
+userOverrides maps a (userId, feature) pair to the explicit true or false value that overrides the plan default for that user and feature.
+
+The FeatureService class manages plans, user plan assignments, and user overrides.
+
+To begin with, we present you with two tasks:
+
+1-1) Read through and understand the code below. Feel free to run it.
+
+1-2) The test for FeatureService is not passing due to a bug in the code. Make the necessary changes to FeatureService to fix the bug.
+
+
+
+import org.junit.*;
+import org.junit.runner.*;
+import org.junit.runner.notification.*;
+import static org.junit.Assert.*;
+import java.util.*;
+
+enum Plan {
+    BASIC, PROFESSIONAL, ENTERPRISE
+}
+
+class FeatureService {
+    Map<Plan, Map<String, Boolean>> planFeatures;
+    Map<Integer, Plan> userPlans;
+    Map<Integer, Map<String, Boolean>> userOverrides;
+
+    public FeatureService() {
+        planFeatures = new HashMap<>();
+
+        Map<String, Boolean> basicFeatures = new HashMap<>();
+        basicFeatures.put("analytics", false);
+        basicFeatures.put("exports", false);
+        basicFeatures.put("api", false);
+        planFeatures.put(Plan.BASIC, basicFeatures);
+
+        Map<String, Boolean> professionalFeatures = new HashMap<>();
+        professionalFeatures.put("analytics", true);
+        professionalFeatures.put("exports", true);
+        professionalFeatures.put("api", false);
+        planFeatures.put(Plan.PROFESSIONAL, professionalFeatures);
+
+        Map<String, Boolean> enterpriseFeatures = new HashMap<>();
+        enterpriseFeatures.put("analytics", true);
+        enterpriseFeatures.put("exports", true);
+        enterpriseFeatures.put("api", true);
+        planFeatures.put(Plan.ENTERPRISE, enterpriseFeatures);
+
+        userPlans = new HashMap<>();
+        userPlans.put(1, Plan.BASIC);
+        userPlans.put(2, Plan.PROFESSIONAL);
+        userPlans.put(3, Plan.ENTERPRISE);
+
+        userOverrides = new HashMap<>();
+
+        Map<String, Boolean> user1Overrides = new HashMap<>();
+        user1Overrides.put("analytics", true);
+        userOverrides.put(1, user1Overrides);
+
+        Map<String, Boolean> user2Overrides = new HashMap<>();
+        user2Overrides.put("exports", false);
+        userOverrides.put(2, user2Overrides);
+    }
+
+    public boolean hasFeature(int userId, String feature) {
+        Plan plan = userPlans.get(userId);
+
+        boolean inherited = planFeatures
+                .getOrDefault(plan, new HashMap<>())
+                .getOrDefault(feature, false);
+
+        Boolean override = userOverrides
+                .getOrDefault(userId, new HashMap<>())
+                .get(feature);
+
+        boolean overrideValue = override != null ? override : false;
+
+        return overrideValue || inherited;
+    }
+}
+
+public class Solution {
+
+    @Test
+    public void testHasFeature1() {
+        // Test that an enabling override and a disabling override
+        // are both correctly applied for their respective users.
+        FeatureService service = new FeatureService();
+
+        assertEquals(true, service.hasFeature(1, "analytics"));
+        assertEquals(false, service.hasFeature(2, "exports"));
+    }
+
+    @Test
+    public void testHasFeature2() {
+        // Test that a feature falls back to the user's assigned
+        // plan when no override exists.
+        FeatureService service = new FeatureService();
+
+        assertEquals(true, service.hasFeature(3, "api"));
+        assertEquals(false, service.hasFeature(1, "exports"));
+    }
+
+    @Test
+    public void testHasFeature3() {
+        // Test that a feature not defined in any plan
+        // is treated as disabled.
+        FeatureService service = new FeatureService();
+
+        assertEquals(false, service.hasFeature(3, "billing"));
+    }
+
+    public static void main(String[] argv) {
+        JUnitCore runner = new JUnitCore();
+
+        runner.addListener(new RunListener() {
+            private boolean failed;
+
+            @Override
+            public void testStarted(Description description) {
+                failed = false;
+            }
+
+            @Override
+            public void testFailure(Failure failure) {
+                failed = true;
+            }
+
+            @Override
+            public void testFinished(Description description) {
+                String status = failed ? "Failed" : "Passed";
+                System.out.println(
+                        status + ": " + description.getMethodName());
+            }
+        });
+
+        Result result = runner.run(Solution.class);
+
+        int failureNumber = 1;
+        for (Failure failure : result.getFailures()) {
+            System.out.println(
+                    "\n  " + failureNumber++ + ") Failure: "
+                            + failure.getDescription().getMethodName());
+            System.out.println(failure.getTrimmedTrace());
+        }
+
+        if (result.wasSuccessful()) {
+            System.out.println("\nAll tests passed successfully.");
+        } else {
+            System.out.println("Some tests failed.");
+        }
+    }
+}
+
+
