@@ -1,0 +1,61 @@
+
+The plan must already exist.
+Assigning a plan to a user who already has one replaces the previous assignment.
+Return true if the assignment succeeds. Return false if the plan does not exist.
+
+2-2) set_user_override
+
+The set_user_override function takes a user_id, a feature name, and an enabled boolean value. It should add or update a feature override for that user, following these rules:
+
+The user must already have an assigned plan.
+The feature must be defined in at least one subscription plan, though not necessarily the user's own plan.
+The enabled value is always a boolean and may explicitly enable or disable the feature.
+If the user already has an override for the feature, replace it.
+Return true if the override is added or updated. Return false if the user has no assigned plan, or if the feature is not defined in any plan.
+
+---------
+
+Recommend Minimal Plans
+Question
+
+Because per-feature overrides now carry a significant surcharge, the sales team wants plan recommendations for a list of customers so accounts can be moved to whichever plan saves them the most money.
+
+Add one function to the FeatureService class. You may reuse any function already in the class.
+
+4-1) recommend_plans
+
+The recommend_plans function takes a list of user_ids and returns a list of recommendations, following these rules:
+
+For each user, find the plan that costs the least while matching their exact current access - either a plan whose defaults already cover everything they have, or a cheaper plan with some paid overrides added.
+
+A user's "effective entitlements" are all features the user currently has access to, applying overrides over plan defaults exactly as has_feature does.
+
+Consider every feature that appears in any plan's defaults or in the user's overrides.
+
+The cost of a plan for a user, while matching their effective entitlements exactly, is calculated the same way as calculate_monthly_charge in the previous question.
+
+best_plan is the plan with the lowest such cost, and best_cost is that cost. If two plans tie on cost, choose the one with the higher base tier.
+
+Skip user_ids that have no assigned plan. If a user_id appears more than once, include it once.
+
+Return one entry per user as a dictionary with the keys "user_id", "best_plan", and "best_cost", sorted by user_id ascending.
+
+Do not modify any stored data.
+
+Example:
+
+Scenario 1
+
+A customer is on PROFESSIONAL with an override disabling priority_support, a feature PROFESSIONAL enables by default, so their effective entitlements no longer include it.
+
+Staying on PROFESSIONAL costs 399. Moving to BASIC needs no overrides for the remaining entitlements and costs only 99.
+
+best_plan is BASIC and best_cost is 99.
+
+Scenario 2
+
+A customer is on ENTERPRISE with effective entitlements that include several features ENTERPRISE enables by default but BASIC and PROFESSIONAL do not.
+
+Matching all of them on a cheaper plan would need several paid overrides and still cost more than staying on ENTERPRISE.
+
+best_plan is ENTERPRISE and best_cost is 999.
