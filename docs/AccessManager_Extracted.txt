@@ -1,0 +1,300 @@
+ACCESS MANAGER — COMBINED EXTRACTION FROM 10 SCREENSHOTS
+
+/*
+We are building a system to manage physical access to a corporate campus.
+Each user has a unique ID, a name, and an access level.
+Access levels are ranked: VISITOR is the lowest, STAFF is higher, and ADMIN is the highest.
+A user is authorized for a required access level when their own level is the same or higher – so
+an ADMIN is authorized for STAFF and VISITOR areas,
+and a STAFF user is authorized for VISITOR areas.
+
+Definitions:
+* A "user" is an object representing someone with campus access. It has a userId, a name,
+  and an accessLevel.
+* VISITOR is the default access level a new user receives.
+* An "AccessManager" is the class used to manage all users on the campus.
+
+To begin with, two tasks:
+1-1) Read through and understand the code below. Take as much time as you need,
+     and feel free to run the code.
+1-2) The test for AccessManager is not passing due to a bug in the code. Make the
+     necessary changes to AccessManager to fix the bug.
+*/
+
+/*
+We are extending the system to record building access.
+The new AccessEvent class represents one badge-in/badge-out session for a user.
+Each event has a unique ID, an entryTime, and an exitTime, all measured in
+minutes since the start of the day.
+All events happen on the same day.
+The campus is open from minute 480 (08:00) to minute 1200 (20:00).
+An event is "after-hours" if it starts before 480 or ends after 1200.
+Starting exactly at 480 or ending exactly at 1200 still counts as within hours.
+
+Add two methods to AccessManager:
+2.1) logAccess(userId, event): add the event to that user. Return true if the
+     user exists. If the user does not exist, ignore the event and return false.
+2.2) getAfterHoursUsers(): return the IDs of all users who have at least one
+     after-hours event, sorted in ascending order. Do not include a user who has
+     no after-hours events, including a user with no events at all.
+
+The testLogAccess and testGetAfterHoursUsers tests are provided.
+*/
+
+/*
+We are adding a building utilization report. For capacity planning we want to
+know, for each hour of the day, how many distinct users were present in the
+building during that hour.
+The day is divided into 24 one-hour buckets: hour h covers the minutes from h*60
+up to (but not including) (h+1)*60.
+
+For example, hour 0 is minutes 0-59, hour 1 is minutes 60-119, and so on. A user
+is "present during hour h" if any of their access events overlaps that hour. A
+session that ends exactly on an hour boundary does not count as present in the
+next hour (an event covering minutes 120-180 is present in hour 2 only,
+not hour 3).
+
+3.1) Implement a function getHourlyOccupancy(). It takes no arguments and
+returns a Map mapping each hour to the number of distinct users present during
+that hour. Only include hours that have at least one user present; omit hours
+with no users.
+
+Example:
+Input:
+    user 20 has one session: minute 130 to 260
+    user 21 has one session: minute 200 to 230
+Output (returned by getHourlyOccupancy()):
+    {2: 1, 3: 2, 4: 1}
+Explanation:
+User 20's session covers hour 2 (minutes 120-180), hour 3 (180-240), and hour 4
+(240-300). User 21's session falls entirely within hour 3. Hour 3 therefore has
+two users present, while hours 2 and 4 each have only user 20, giving
+{2: 1, 3: 2, 4: 1}.
+
+The testGetHourlyOccupancy test is provided.
+*/
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.Objects;
+import org.junit.Test;
+import org.junit.runner.JUnitCore;
+import org.junit.runner.Result;
+import org.junit.runner.notification.Failure;
+import static org.junit.Assert.*;
+
+public class Solution {
+    enum AccessLevel {
+        VISITOR(1),
+        STAFF(2),
+        ADMIN(3);
+
+        private final int rank;
+
+        AccessLevel(int rank) {
+            this.rank = rank;
+        }
+
+        int getRank() {
+            return rank;
+        }
+    }
+
+    /**
+     * A single badge-in/badge-out session for a user. Has a unique ID and an entry
+     * and exit time, each measured in minutes since the start of the day.
+     */
+    static class AccessEvent {
+        final int id;
+        final int entryTime;
+        final int exitTime;
+
+        AccessEvent(int id, int entryTime, int exitTime) {
+            this.id = id;
+            this.entryTime = entryTime;
+            this.exitTime = exitTime;
+        }
+    }
+
+    /** Data about a campus user. */
+    static class User {
+        final int userId;
+        final String name;
+        AccessLevel accessLevel;
+
+        User(int userId, String name, AccessLevel accessLevel) {
+            this.userId = userId;
+            this.name = name;
+            this.accessLevel = accessLevel;
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            if (!(other instanceof User u)) {
+                return false;
+            }
+            return userId == u.userId
+                    && name.equals(u.name)
+                    && accessLevel == u.accessLevel;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(userId, name, accessLevel);
+        }
+
+        @Override
+        public String toString() {
+            return "User ID: " + userId + ", Name: " + name + ", Access Level: "
+                    + accessLevel;
+        }
+    }
+
+    /** Data for managing campus access, and methods staff use to query or update it. */
+    static class AccessManager {
+        private final ArrayList<User> users = new ArrayList<>();
+
+        /** Registers a user on the campus. */
+        void addUser(User user) {
+            users.add(user);
+        }
+
+        /** Updates the access level of the given user. */
+        void updateAccessLevel(int userId, AccessLevel accessLevel) {
+            for (User user : users) {
+                if (user.userId == userId) {
+                    user.accessLevel = accessLevel;
+                    break;
+                }
+            }
+        }
+
+        // VISITOR(1),
+        // STAFF(2),
+        // ADMIN(3);
+
+        /** Returns whether the given user is authorized for the required access level. */
+        boolean isAuthorized(int userId, AccessLevel requiredLevel) {
+            for (User user : users) {
+                if (user.userId == userId) {
+                    return user.accessLevel == requiredLevel;
+                }
+            }
+            return false;
+        }
+    }
+
+    public static class TestSuite {
+        @Test
+        public void testUser() {
+            User u = new User(1, "John Doe", AccessLevel.VISITOR);
+            assertEquals(1, u.userId);
+            assertEquals("John Doe", u.name);
+            assertEquals(AccessLevel.VISITOR, u.accessLevel);
+        }
+
+        @Test
+        public void testIsAuthorized() {
+            AccessManager manager = new AccessManager();
+            manager.addUser(new User(1, "Vera Visitor", AccessLevel.VISITOR));
+            manager.addUser(new User(2, "Sam Staff", AccessLevel.STAFF));
+            manager.addUser(new User(3, "Ada Admin", AccessLevel.ADMIN));
+            // A user is authorized for their own level and for any lower level.
+            assertTrue(manager.isAuthorized(1, AccessLevel.VISITOR));
+            assertFalse(manager.isAuthorized(1, AccessLevel.STAFF));
+            assertTrue(manager.isAuthorized(2, AccessLevel.STAFF));
+            assertTrue(manager.isAuthorized(2, AccessLevel.VISITOR));
+            assertFalse(manager.isAuthorized(2, AccessLevel.ADMIN));
+            assertTrue(manager.isAuthorized(3, AccessLevel.ADMIN));
+            assertTrue(manager.isAuthorized(3, AccessLevel.VISITOR));
+            // An unknown user is never authorized.
+            assertFalse(manager.isAuthorized(999, AccessLevel.VISITOR));
+        }
+
+        // Add the tests below inside the TestSuite class.
+        @Test
+        public void testLogAccess() {
+            AccessManager manager = new AccessManager();
+            manager.addUser(new User(12, "John Doe", AccessLevel.STAFF));
+            manager.addUser(new User(22, "Alex Cleeve", AccessLevel.VISITOR));
+            AccessEvent e1 = new AccessEvent(111, 10, 20);
+            AccessEvent e2 = new AccessEvent(112, 15, 35);
+            AccessEvent e3 = new AccessEvent(113, 20, 25);
+            AccessEvent e99 = new AccessEvent(999, 1, 2);
+            assertTrue(manager.logAccess(12, e1));
+            assertTrue(manager.logAccess(22, e2));
+            assertTrue(manager.logAccess(12, e3));
+            // Non-existent user: event should be ignored.
+            assertFalse(manager.logAccess(404, e99));
+        }
+
+        @Test
+        public void testGetAfterHoursUsers() {
+            AccessManager manager = new AccessManager();
+            manager.addUser(new User(30, "Late Leaver", AccessLevel.ADMIN));
+            manager.addUser(new User(10, "Early Bird", AccessLevel.STAFF));
+            manager.addUser(new User(50, "No Shows", AccessLevel.VISITOR));
+            manager.addUser(new User(40, "On The Dot", AccessLevel.STAFF));
+            manager.addUser(new User(20, "Nine To Five", AccessLevel.VISITOR));
+            // user 30 -> single event enters in-hours but exits after closing (1250 > 1200)
+            manager.logAccess(30, new AccessEvent(505, 1150, 1250));
+            // user 10 -> one event starts before opening (400 < 480): after-hours
+            manager.logAccess(10, new AccessEvent(501, 400, 450));
+            manager.logAccess(10, new AccessEvent(502, 500, 600));
+            // user 20 -> both events within hours
+            manager.logAccess(20, new AccessEvent(503, 600, 700));
+            manager.logAccess(20, new AccessEvent(504, 800, 1100));
+            // user 40 -> single event exactly on the boundary (opens 480, closes 1200): within hours
+            manager.logAccess(40, new AccessEvent(506, 480, 1200));
+            // user 50 -> no events
+            java.util.List<Integer> expected = new ArrayList<>();
+            expected.add(10);
+            expected.add(30);
+            assertEquals(expected, manager.getAfterHoursUsers());
+        }
+
+        // Add the test below inside the TestSuite class.
+        @Test
+        public void testGetHourlyOccupancy() {
+            AccessManager manager = new AccessManager();
+            manager.addUser(new User(1, "Spanner", AccessLevel.STAFF));
+            manager.addUser(new User(2, "Midday", AccessLevel.VISITOR));
+            manager.addUser(new User(3, "Edge", AccessLevel.ADMIN));
+            manager.addUser(new User(4, "Solo", AccessLevel.STAFF));
+            manager.addUser(new User(5, "Absent", AccessLevel.VISITOR));
+            // user 1 -> one session that spans hours 1, 2, and 3
+            manager.logAccess(1, new AccessEvent(701, 90, 200));
+            // user 2 -> two events, both in hour 2; user 2 must still count once for hour 2
+            manager.logAccess(2, new AccessEvent(702, 130, 150));
+            manager.logAccess(2, new AccessEvent(705, 155, 170));
+            // user 3 -> hour 3 only; exits exactly on the hour-4 boundary (240), so not hour 4
+            manager.logAccess(3, new AccessEvent(703, 180, 240));
+            // user 4 -> hour 5 only; entry (300) and exit (360) fall exactly on hour boundaries
+            manager.logAccess(4, new AccessEvent(704, 300, 360));
+            // user 5 -> no events
+            java.util.Map<Integer, Integer> expected = new java.util.HashMap<>();
+            expected.put(1, 1);
+            expected.put(2, 2);
+            expected.put(3, 2);
+            expected.put(5, 1);
+            assertEquals(expected, manager.getHourlyOccupancy());
+        }
+    }
+
+    public static void main(String[] args) {
+        Result result = JUnitCore.runClasses(TestSuite.class);
+        for (Failure failure : result.getFailures()) {
+            System.out.println(failure.getTrace());
+        }
+        if (result.wasSuccessful()) {
+            System.out.println("All tests passed successfully.");
+        } else {
+            System.err.println("Tests failed: " + result.getFailureCount() + " test(s) failed.");
+            System.exit(1);
+        }
+    }
+}

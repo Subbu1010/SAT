@@ -1,0 +1,290 @@
+package ComputePool;
+/*
+We are building the back-end for a cloud infrastructure platform.
+The system tracks compute pools, customer reservations, and available compute capacity.
+
+Definitions
+
+A compute pool represents a pool of cloud compute capacity. A compute pool has:
+- poolId
+- region
+- totalCapacity
+
+A reservation represents a customer's reserved compute capacity. A reservation has:
+- reservationId
+- customerId
+- poolId
+- capacityUnits
+- status
+- startTime
+- endTime
+
+A reservation status is one of:
+- ACTIVE
+- CANCELLED
+- EXPIRED
+
+The ReservationManager class manages compute pools and reservations.
+
+To begin with, we present you with two tasks:
+1-1) Read through and understand the code below. Feel free to run it.
+1-2) The test for ReservationManager is not passing due to a bug in the code.
+Make the necessary changes to ReservationManager to fix the bug.
+*/
+
+/*
+We are extending the platform to support recording reservations and summarizing customer usage.
+
+Add two functions to the ReservationManager class:
+
+2-1) The addReservation function should store a reservation only if:
+- the reservation's poolId refers to a known compute pool, and
+- the reservation's capacityUnits is less than or equal to the pool's currently available capacity.
+
+For this question, available capacity means:
+pool.totalCapacity - total ACTIVE reserved capacity for that pool
+
+If either condition is not met, the reservation should be ignored.
+
+2-2) The getReservedCapacityByCustomer function should return a Map mapping each customer ID to
+the total ACTIVE reserved capacity for that customer.
+
+- Only ACTIVE reservations should be counted.
+- Customers with no ACTIVE reservations should not appear in the Map.
+- If there are no ACTIVE reservations, return an empty Map.
+*/
+
+/*
+We now need to expire reservations whose reservation windows have ended.
+
+Add one function to the ReservationManager class.
+
+3-1) The expireReservations function takes a currentTime, and updates reservation statuses
+according to the following rules:
+
+- Any ACTIVE reservation with endTime less than or equal to currentTime should become EXPIRED.
+- CANCELLED reservations should remain CANCELLED.
+- Reservations that are already EXPIRED should remain EXPIRED.
+- ACTIVE reservations with endTime greater than currentTime should remain ACTIVE.
+
+The function should return the number of reservations that were changed from ACTIVE to EXPIRED.
+
+After this change, expired reservations should no longer consume capacity.
+Available capacity should be calculated using only ACTIVE reservations.
+*/
+
+import org.junit.runner.JUnitCore;
+import org.junit.runner.Result;
+import org.junit.runner.notification.Failure;
+import org.junit.Test;
+import static org.junit.Assert.assertEquals;
+import java.util.*;
+
+enum ReservationStatus {
+    ACTIVE,
+    CANCELLED,
+    EXPIRED
+}
+
+class ComputePool {
+    int poolId;
+    String region;
+    int totalCapacity;
+
+    public ComputePool(int poolId, String region, int totalCapacity) {
+        this.poolId = poolId;
+        this.region = region;
+        this.totalCapacity = totalCapacity;
+    }
+}
+
+class Reservation {
+    int reservationId;
+    int customerId;
+    int poolId;
+    int capacityUnits;
+    ReservationStatus status;
+    int startTime;
+    int endTime;
+
+    public Reservation(
+            int reservationId,
+            int customerId,
+            int poolId,
+            int capacityUnits,
+            ReservationStatus status,
+            int startTime,
+            int endTime
+    ) {
+        this.reservationId = reservationId;
+        this.customerId = customerId;
+        this.poolId = poolId;
+        this.capacityUnits = capacityUnits;
+        this.status = status;
+        this.startTime = startTime;
+        this.endTime = endTime;
+    }
+}
+
+class ReservationManager {
+    Map<Integer, ComputePool> computePools = new HashMap<>();
+    List<Reservation> reservations = new ArrayList<>();
+
+    public void addComputePool(ComputePool computePool) {
+        computePools.put(computePool.poolId, computePool);
+    }
+
+    public int getAvailableCapacity(int poolId) {
+        if (!computePools.containsKey(poolId)) {
+            return 0;
+        }
+
+        ComputePool pool = computePools.get(poolId);
+
+        int usedCapacity = 0;
+        for (Reservation reservation : reservations) {
+            if (reservation.poolId == poolId) {
+                usedCapacity += reservation.capacityUnits;
+            }
+        }
+
+        return pool.totalCapacity - usedCapacity;
+    }
+
+    // Functions requested in tasks 2 and 3 are not present in the screenshots.
+}
+
+public class Solution {
+    public static class TestSuite {
+        @Test
+        public void testGetAvailableCapacity() {
+            System.out.println("Running testGetAvailableCapacity");
+
+            ReservationManager manager = new ReservationManager();
+            manager.addComputePool(new ComputePool(1, "us-east", 100));
+
+            manager.reservations.add(
+                    new Reservation(101, 1001, 1, 30, ReservationStatus.ACTIVE, 1000, 2000)
+            );
+
+            manager.reservations.add(
+                    new Reservation(102, 1002, 1, 20, ReservationStatus.CANCELLED, 1000, 2000)
+            );
+
+            assertEquals(70, manager.getAvailableCapacity(1));
+            assertEquals(0, manager.getAvailableCapacity(99));
+        }
+
+        @Test
+        public void testAddReservation() {
+            System.out.println("Running testAddReservation");
+
+            ReservationManager manager = new ReservationManager();
+            manager.addComputePool(new ComputePool(1, "us-east", 100));
+
+            manager.reservations.add(
+                    new Reservation(201, 1001, 1, 50, ReservationStatus.CANCELLED, 1000, 2000)
+            );
+
+            manager.addReservation(
+                    new Reservation(202, 1002, 1, 30, ReservationStatus.ACTIVE, 1000, 2000)
+            );
+
+            manager.reservations.add(
+                    new Reservation(203, 1003, 1, 40, ReservationStatus.EXPIRED, 1000, 2000)
+            );
+
+            manager.addReservation(
+                    new Reservation(204, 1004, 1, 60, ReservationStatus.ACTIVE, 1000, 2000)
+            );
+
+            manager.addReservation(
+                    new Reservation(205, 1005, 99, 20, ReservationStatus.ACTIVE, 1000, 2000)
+            );
+
+            manager.addReservation(
+                    new Reservation(206, 1006, 1, 50, ReservationStatus.ACTIVE, 1000, 2000)
+            );
+
+            assertEquals(4, manager.reservations.size());
+            assertEquals(204, manager.reservations.get(3).reservationId);
+        }
+
+        @Test
+        public void testGetReservedCapacityByCustomer() {
+            System.out.println("Running testGetReservedCapacityByCustomer");
+
+            ReservationManager manager = new ReservationManager();
+            manager.addComputePool(new ComputePool(1, "us-east", 200));
+
+            manager.addReservation(
+                    new Reservation(301, 1001, 1, 30, ReservationStatus.ACTIVE, 1000, 2000)
+            );
+            manager.addReservation(
+                    new Reservation(302, 1001, 1, 20, ReservationStatus.ACTIVE, 1000, 2000)
+            );
+            manager.addReservation(
+                    new Reservation(303, 1002, 1, 10, ReservationStatus.ACTIVE, 1000, 2000)
+            );
+            manager.addReservation(
+                    new Reservation(304, 1003, 1, 50, ReservationStatus.CANCELLED, 1000, 2000)
+            );
+
+            Map<Integer, Integer> result = manager.getReservedCapacityByCustomer();
+
+            Map<Integer, Integer> expected = new HashMap<>();
+            expected.put(1001, 50);
+            expected.put(1002, 10);
+
+            assertEquals(expected, result);
+        }
+
+        @Test
+        public void testExpireReservations() {
+            System.out.println("Running testExpireReservations");
+
+            ReservationManager manager = new ReservationManager();
+            manager.addComputePool(new ComputePool(1, "us-east", 500));
+
+            manager.addReservation(
+                    new Reservation(401, 1001, 1, 10, ReservationStatus.ACTIVE, 100, 1000)
+            );
+            manager.addReservation(
+                    new Reservation(402, 1002, 1, 20, ReservationStatus.ACTIVE, 100, 900)
+            );
+            manager.addReservation(
+                    new Reservation(403, 1003, 1, 30, ReservationStatus.ACTIVE, 100, 1100)
+            );
+            manager.addReservation(
+                    new Reservation(404, 1004, 1, 40, ReservationStatus.CANCELLED, 100, 800)
+            );
+            manager.addReservation(
+                    new Reservation(405, 1005, 1, 50, ReservationStatus.EXPIRED, 100, 700)
+            );
+
+            int changed = manager.expireReservations(1000);
+
+            assertEquals(2, changed);
+            assertEquals(ReservationStatus.EXPIRED, manager.reservations.get(0).status);
+            assertEquals(ReservationStatus.EXPIRED, manager.reservations.get(1).status);
+            assertEquals(ReservationStatus.ACTIVE, manager.reservations.get(2).status);
+            assertEquals(ReservationStatus.CANCELLED, manager.reservations.get(3).status);
+            assertEquals(ReservationStatus.EXPIRED, manager.reservations.get(4).status);
+            assertEquals(470, manager.getAvailableCapacity(1));
+        }
+    }
+
+    public static void main(String[] argv) {
+        Result result = JUnitCore.runClasses(TestSuite.class);
+
+        for (Failure failure : result.getFailures()) {
+            System.out.println(failure.getTrace());
+        }
+
+        if (result.wasSuccessful()) {
+            System.out.println("All tests passed.");
+        } else {
+            System.out.println("Some tests failed.");
+        }
+    }
+}

@@ -1,0 +1,346 @@
+package FoodDelivery;
+
+/*
+We are building a program to manage a food delivery platform. The platform has multiple
+restaurants,
+customers place orders, and those orders move through statuses:
+PLACED -> PREPARING -> OUT_FOR_DELIVERY -> DELIVERED, or CANCELED.
+
+Definitions:
+* An "order" has: orderId, restaurantId, customerId, orderValue, distanceKm, status.
+* "OrderManager" manages orders and provides order statistics.
+
+To begin with, we present you with two tasks:
+1-1) Read through and understand the code below. Feel free to run it.
+1-2) The test for OrderManager is not passing due to a bug in the code.
+     Make the necessary changes to OrderManager to fix the bug.
+*/
+
+/*
+We are updating our system to include delivery session information for orders.
+
+We introduce a Delivery class:
+- Each Delivery has a unique deliveryId
+- startMinute and endMinute represent minutes from the start of the day (same day)
+- duration = endMinute - startMinute
+
+Add two functions to OrderManager:
+
+2.1) addDelivery(orderId, delivery):
+     Associate a delivery with an order. One order could have multiple deliveries. If the order
+     does not exist, ignore.
+
+2.2) getAverageDeliveryTimeByRestaurant():
+     Compute the average delivery duration (minutes) per restaurantId.
+     Count ALL deliveries for that restaurant (across orders).
+     Return: Map<Integer, Double> restaurantId -> averageDuration.
+
+To assist you in testing these new functions, we have provided the
+ testGetAverageDeliveryTimeByRestaurant and assertAlmost functions.
+*/
+
+/* 3)
+We want to know the delivery fee for each order.
+
+A delivery fee is computed in three steps:
+
+* Step 1: Round the order's distance UP to the nearest whole km.
+  (1.0 => 1, 1.2 => 2, 2.1 => 3)
+
+* Step 2: Calculate the base fee:
+  2 for the first km,
+  +1 per extra km.
+  (Example: 1 km => 2, 2 km => 3, 3 km => 4, etc.)
+
+* Step 3: Apply order value discount
+  - order value >= 50  => fee = 0 (free delivery)
+  - order value >= 30  => fee is 50% off
+  - Otherwise          => use the base fee
+
+Example: Order with distance 2.1 km and orderValue 35.0
+  roundedKm = 3  => base = 4  => 50% off => fee = 2.0
+
+Add a function getDeliveryFees in OrderManager that calculates and returns a map from orderId to
+the corresponding fee.
+
+To test this new function, the testGetDeliveryFees function will be added.
+*/
+
+/*
+We want to recommend delivery partners who are active at the same time most often.
+
+To support this feature, a new class is added to the code:
+* PartnerDelivery: a delivery session done by a partner (partnerId, startMinute, endMinute)
+
+Extend OrderManager with addPartnerDelivery to store partner deliveries.
+
+Then, to find the best partners, for each partner we compute how many minutes their delivery
+windows overlap with each other partner.
+The output is a list of recommended partners for each partner: who they overlap with and for how
+many minutes,
+ranked by overlap (highest first), then by partner ID when tied.
+Only include partners with overlap greater than zero.
+
+Understanding overlap:
+Two delivery windows overlap when they share time. The overlap is the number of minutes they
+share.
+
+Examples:
+* Partner A [10, 50] and Partner B [30, 60]: both are active from minute 30 to 50, so overlap =
+  20 minutes.
+* Partner A [10, 20] and Partner B [20, 30]: they meet at minute 20 but share no minutes, so
+  overlap = 0.
+
+When a partner has multiple deliveries,
+sum overlaps across all pairs: for each of their deliveries,
+compute its overlap with each of the other partner's deliveries, and add those minutes together.
+
+Example with multiple deliveries:
+  Partner 1 has [0, 10] and [20, 40]. Partner 2 has [5, 25].
+  First delivery [0, 10] overlaps [5, 25] by 5 minutes (5-10).
+  Second delivery [20, 40] overlaps [5, 25] by 5 minutes (20-25).
+  Total overlap between Partner 1 and Partner 2: 10 minutes.
+
+Sorting: For each partner, return the list of (otherPartnerId, overlapMinutes),
+sorted by overlap descending, then otherPartnerId ascending on ties.
+
+Example with three partners:
+  Partner 1: [10, 50]
+  Partner 2: [30, 60] (overlap with 1 = 20)
+  Partner 3: [55, 80] (overlap with 2 = 5)
+
+  Partner 1 -> [(2, 20)]
+  Partner 2 -> [(1, 20), (3, 5)]
+  Partner 3 -> [(2, 5)]
+
+Add a function getRecommendedPartners in OrderManager that returns the map described above.
+
+To test this new function, the testGetRecommendedPartners_case1 and
+testGetRecommendedPartners_case2 functions will be added.
+*/
+
+import java.util.*;
+import org.junit.Assert;
+
+/**
+ * Orders are active until delivered or cancelled
+ */
+enum OrderStatus {
+    PLACED,
+    PREPARING,
+    OUT_FOR_DELIVERY,
+    DELIVERED,
+    CANCELED
+}
+
+class Delivery {
+    int deliveryId;
+    int startMinute;
+    int endMinute;
+
+    Delivery(int deliveryId, int startMinute, int endMinute) {
+        this.deliveryId = deliveryId;
+        this.startMinute = startMinute;
+        this.endMinute = endMinute;
+    }
+
+    int getDurationMinutes() {
+        return endMinute - startMinute;
+    }
+}
+
+class Order {
+    int orderId;
+    int restaurantId;
+    int customerId;
+    double orderValue;
+    double distanceKm;
+    OrderStatus status;
+
+    Order(int orderId, int restaurantId, int customerId,
+          double orderValue, double distanceKm, OrderStatus status) {
+        this.orderId = orderId;
+        // [The remaining constructor assignments are cut off in the supplied screenshots.]
+    }
+}
+
+// [The beginning of OrderStats is cut off in the supplied screenshots.]
+class OrderStats {
+    int totalOrders;
+    int activeOrders;
+    int closedOrders;
+
+    OrderStats(int totalOrders, int activeOrders, int closedOrders) {
+        this.totalOrders = totalOrders;
+        this.activeOrders = activeOrders;
+        this.closedOrders = closedOrders;
+    }
+}
+
+class PartnerDelivery {
+    int deliveryId;
+    int partnerId;
+    int startMinute;
+    int endMinute;
+
+    PartnerDelivery(int deliveryId, int partnerId, int startMinute, int endMinute) {
+        this.deliveryId = deliveryId;
+        this.partnerId = partnerId;
+        this.startMinute = startMinute;
+        this.endMinute = endMinute;
+    }
+}
+
+class OrderManager {
+    List<Order> orders = new ArrayList<>();
+
+    void addOrder(Order order) {
+        orders.add(order);
+    }
+
+    void updateOrderStatus(int orderId, OrderStatus newStatus) {
+        for (Order o : orders) {
+            if (o.orderId == orderId) {
+                o.status = newStatus;
+                return;
+            }
+        }
+    }
+
+    OrderStats getOrderStatistics() {
+        int total = orders.size();
+        int active = 0;
+        int closed = 0;
+        for (Order o : orders) {
+            if (o.status == OrderStatus.PLACED) {
+                active++;
+            } else if (o.status == OrderStatus.DELIVERED ||
+                       o.status == OrderStatus.CANCELED) {
+                closed++;
+            }
+        }
+        return new OrderStats(total, active, closed);
+    }
+
+    // [Methods requested in tasks 2-4 are not implemented in the photographed starter code.]
+}
+
+public class Solution {
+    public static void main(String[] args) {
+        testOrderManager();
+        testGetAverageDeliveryTimeByRestaurant();
+        testGetDeliveryFees();
+        testGetRecommendedPartners_case1();
+        testGetRecommendedPartners_case2();
+        System.out.println("All tests passed.");
+    }
+
+    public static void testOrderManager() {
+        System.out.println("Running testOrderManager");
+        OrderManager om = new OrderManager();
+        om.addOrder(new Order(1, 10, 100, 25.0, 3.2, OrderStatus.PLACED));
+        om.addOrder(new Order(2, 10, 101, 55.0, 1.4, OrderStatus.PREPARING));
+        om.addOrder(new Order(3, 11, 102, 15.0, 6.0, OrderStatus.OUT_FOR_DELIVERY));
+        om.addOrder(new Order(4, 11, 103, 40.0, 2.0, OrderStatus.DELIVERED));
+        om.addOrder(new Order(5, 12, 104, 18.0, 4.5, OrderStatus.CANCELED));
+
+        OrderStats stats = om.getOrderStatistics();
+        Assert.assertEquals(5, stats.totalOrders);
+        Assert.assertEquals(3, stats.activeOrders);
+        Assert.assertEquals(2, stats.closedOrders);
+    }
+
+    private static void assertAlmost(double expected, double actual, double eps) {
+        Assert.assertTrue(Math.abs(expected - actual) <= eps);
+    }
+
+    public static void testGetAverageDeliveryTimeByRestaurant() {
+        System.out.println("Running testGetAverageDeliveryTimeByRestaurant");
+        OrderManager om = new OrderManager();
+        om.addOrder(new Order(1, 10, 100, 25.0, 3.2, OrderStatus.DELIVERED));
+        om.addOrder(new Order(2, 10, 101, 55.0, 1.4, OrderStatus.DELIVERED));
+        om.addOrder(new Order(3, 11, 102, 15.0, 6.0, OrderStatus.DELIVERED));
+
+        om.addDelivery(1, new Delivery(101, 10, 40));   // 30
+        om.addDelivery(1, new Delivery(102, 50, 80));   // 30
+        om.addDelivery(2, new Delivery(103, 90, 150));  // 60
+        om.addDelivery(3, new Delivery(104, 20, 50));   // 30
+
+        om.addDelivery(999, new Delivery(105, 0, 10));  // ignored
+
+        Map<Integer, Double> avg = om.getAverageDeliveryTimeByRestaurant();
+        assertAlmost(40.0, avg.get(10), 0.0001);
+        assertAlmost(30.0, avg.get(11), 0.0001);
+    }
+
+    public static void testGetDeliveryFees() {
+        System.out.println("Running testGetDeliveryFees");
+        OrderManager om = new OrderManager();
+        om.addOrder(new Order(1, 10, 100, 25.0, 1.0, OrderStatus.PLACED)); // rounded1 => base2
+        om.addOrder(new Order(2, 10, 101, 35.0, 2.1, OrderStatus.PLACED)); // rounded3 => base4, 50% off => 2
+        om.addOrder(new Order(3, 11, 102, 55.0, 10.0, OrderStatus.PLACED)); // free
+        om.addOrder(new Order(4, 12, 103, 29.0, 1.2, OrderStatus.PLACED)); // rounded2 => base3
+
+        Map<Integer, Double> fees = om.getDeliveryFees();
+        assertAlmost(2.0, fees.get(1), 0.0001);
+        assertAlmost(2.0, fees.get(2), 0.0001);
+        assertAlmost(0.0, fees.get(3), 0.0001);
+        assertAlmost(3.0, fees.get(4), 0.0001);
+    }
+
+    private static void assertPairListEquals(List<int[]> expected, List<int[]> actual) {
+        Assert.assertEquals(expected.size(), actual.size());
+        for (int i = 0; i < expected.size(); i++) {
+            Assert.assertEquals(expected.get(i)[0], actual.get(i)[0]);
+            Assert.assertEquals(expected.get(i)[1], actual.get(i)[1]);
+        }
+    }
+
+    public static void testGetRecommendedPartners_case1() {
+        System.out.println("Running testGetRecommendedPartners_case1");
+        OrderManager om = new OrderManager();
+
+        // partner 1: [10,50]
+        // partner 2: [30,60] overlap = 20
+        // partner 3: [55,80] overlap with 2 = 5
+        om.addPartnerDelivery(new PartnerDelivery(201, 1, 10, 50));
+        om.addPartnerDelivery(new PartnerDelivery(202, 2, 30, 60));
+        om.addPartnerDelivery(new PartnerDelivery(203, 3, 55, 80));
+
+        Map<Integer, List<int[]>> recs = om.getRecommendedPartners();
+        assertPairListEquals(Arrays.asList(new int[]{2, 20}), recs.get(1));
+        assertPairListEquals(Arrays.asList(new int[]{1, 20}, new int[]{3, 5}), recs.get(2));
+        assertPairListEquals(Arrays.asList(new int[]{2, 5}), recs.get(3));
+    }
+
+    public static void testGetRecommendedPartners_case2() {
+        System.out.println("Running testGetRecommendedPartners_case2");
+        OrderManager om = new OrderManager();
+
+        // partner 1: [0,10], [20,40]
+        // partner 2: [5,25] overlaps total with partner1 = 10
+        // partner 3: [12,18] overlaps with partner2 [5,25] = 6
+        // partner 4: [30,50] overlaps with partner1 [20,40] = 10
+        om.addPartnerDelivery(new PartnerDelivery(301, 1, 0, 10));
+        om.addPartnerDelivery(new PartnerDelivery(302, 1, 20, 40));
+        om.addPartnerDelivery(new PartnerDelivery(303, 2, 5, 25));
+        om.addPartnerDelivery(new PartnerDelivery(304, 3, 12, 18));
+        om.addPartnerDelivery(new PartnerDelivery(305, 4, 30, 50));
+
+        Map<Integer, List<int[]>> recs = om.getRecommendedPartners();
+        // p1 has overlaps with p2=10 and p4=10, tie -> otherPartnerId ascending
+        assertPairListEquals(Arrays.asList(new int[]{2, 10}, new int[]{4, 10}), recs.get(1));
+        assertPairListEquals(Arrays.asList(new int[]{1, 10}, new int[]{3, 6}), recs.get(2));
+        assertPairListEquals(Arrays.asList(new int[]{2, 6}), recs.get(3));
+        assertPairListEquals(Arrays.asList(new int[]{1, 10}), recs.get(4));
+    }
+}
+
+/* TRANSCRIPTION NOTES
+ * Combined from the 9 supplied FoodDelivery screenshots in source order.
+ * Repeated screen-overlap sections were consolidated.
+ * The Order constructor's final assignments and the start of OrderStats were
+ * not visible; the omissions are explicitly marked rather than guessed.
+ * Starter code's OrderManager statistics bug is preserved as shown.
+ * Requested methods are absent in the starter code, as in the screenshots.
+ */

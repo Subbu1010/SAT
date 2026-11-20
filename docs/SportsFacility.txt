@@ -1,0 +1,351 @@
+/*
+ * We are building a program to manage equipment bookings at a sports
+ * facility. The facility has multiple pieces of equipment, such as
+ * treadmills and rowing machines, and members can reserve them for
+ * specific time periods.
+ *
+ * Definitions:
+ * - An "equipment" is an object representing a reservable item. It has
+ *   properties for the ID and name.
+ * - A "reservation" is an object representing a member booking for a
+ *   specific piece of equipment over a time period. Times are represented
+ *   as integers in minutes from the start of the day.
+ * - A "FacilityManager" is the class used to manage all equipment and
+ *   reservations.
+ */
+/*
+ * We are updating our system to support richer reservation queries.
+ * Facility managers need to look up all active reservations made by a
+ * specific member, and equipment coordinators need a quick summary of
+ * how each piece of equipment is being used.
+ *
+ * 2-1) Add getReservationsForMember() to FacilityManager.
+ *      This function takes a member's name and returns a list of all
+ *      their active reservations. If the member has no active
+ *      reservations, return an empty list.
+ *
+ * 2-2) Add getEquipmentSummary() to FacilityManager.
+ *      This function takes an equipment ID and returns a map with
+ *      the following keys:
+ *      - "total_reservations": the number of active reservations for
+ *        that equipment.
+ *      - "total_minutes": the total duration in minutes across all
+ *        active reservations for that equipment.
+ *      If the equipment has no active reservations, both values should
+ *      be 0.
+ *
+ * To assist you in testing these new functions, we have provided the
+ * testGetReservationsForMember and testGetEquipmentSummary tests.
+ */
+/*
+The facility requires a minimum turnaround time of 30 minutes between reservations for the same
+piece of equipment,
+to allow for cleaning and sanitisation between members.
+
+A piece of equipment is unavailable if the requested period overlaps an active reservation,
+or if there is less than 30 minutes between the requested period and any active reservation
+before or after it.
+
+3-1) Add getAvailableEquipment() to FacilityManager.
+     This function takes a requested start and end time and returns a sorted list of equipment
+IDs (ascending)
+     that are fully available for the requested period, including the required 30-minute
+turnaround on either side.
+     If no equipment is available, return an empty list.
+To assist you in testing this new function, we have provided the testGetAvailableEquipment test.
+*/
+
+import java.util.*;
+import java.util.stream.Collectors;
+import org.junit.Test;
+import org.junit.runner.JUnitCore;
+import org.junit.runner.Result;
+import org.junit.runner.notification.Failure;
+import static org.junit.Assert.*;
+
+public class Solution {
+    enum ReservationStatus {
+        ACTIVE,
+        CANCELLED
+    }
+
+    static class Equipment {
+        final int equipmentId;
+        final String name;
+
+        Equipment(int equipmentId, String name) {
+            this.equipmentId = equipmentId;
+            this.name = name;
+        }
+
+        @Override
+        public String toString() {
+            return "Equipment ID: " + equipmentId + ", Name: " + name;
+        }
+    }
+
+    static class Reservation {
+        final int reservationId;
+        final String memberName;
+        final int equipmentId;
+        final int startTime;
+        final int endTime;
+        ReservationStatus status;
+
+        Reservation(int reservationId, String memberName,
+                    int equipmentId, int startTime, int endTime) {
+            this.reservationId = reservationId;
+            this.memberName = memberName;
+            this.equipmentId = equipmentId;
+            this.startTime = startTime;
+            this.endTime = endTime;
+            this.status = ReservationStatus.ACTIVE;
+        }
+
+        int getDuration() {
+            return endTime - startTime;
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            if (!(other instanceof Reservation r)) return false;
+            return reservationId == r.reservationId;
+        }
+
+        @Override
+        public int hashCode() {
+            return Integer.hashCode(reservationId);
+        }
+
+        @Override
+        public String toString() {
+            return "Reservation ID: " + reservationId
+                + ", Member: " + memberName
+                + ", Equipment ID: " + equipmentId
+                + ", Start: " + startTime
+                + ", End: " + endTime
+                + ", Status: " + status;
+        }
+    }
+
+    static class FacilityManager {
+        final ArrayList<Equipment> equipmentList = new ArrayList<>();
+        final ArrayList<Reservation> reservations = new ArrayList<>();
+
+        /** Adds a piece of equipment to the facility inventory. */
+        void addEquipment(Equipment equipment) {
+            equipmentList.add(equipment);
+        }
+
+        /**
+         * Makes a reservation if the equipment is available for the requested period.
+         * Returns true if successfully reserved, false if the equipment is unavailable.
+         */
+        boolean makeReservation(Reservation reservation) {
+            if (!isAvailable(reservation.equipmentId,
+                             reservation.startTime,
+                             reservation.endTime)) {
+                return false;
+            }
+            reservations.add(reservation);
+            return true;
+        }
+
+        boolean isAvailable(int equipmentId, int startTime, int endTime) {
+            for (Reservation res : reservations) {
+                if (res.equipmentId == equipmentId) {
+                    if (startTime < res.endTime && endTime > res.startTime) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        boolean cancelReservation(int reservationId) {
+            for (Reservation res : reservations) {
+                if (res.reservationId == reservationId) {
+                    res.status = ReservationStatus.CANCELLED;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // TODO 2-1: getReservationsForMember(String memberName)
+        // TODO 2-2: getEquipmentSummary(int equipmentId)
+        // TODO 3-1: getAvailableEquipment(int startTime, int endTime)
+    }
+
+    public static class TestSuite {
+        @Test
+        public void testMakeReservation() {
+            FacilityManager manager = new FacilityManager();
+            Reservation res = new Reservation(101, "Alice Johnson", 1, 480, 600);
+            assertTrue(manager.makeReservation(res));
+            assertEquals(1, manager.reservations.size());
+        }
+
+        @Test
+        public void testConflictDetected() {
+            FacilityManager manager = new FacilityManager();
+            Reservation res1 = new Reservation(101, "Alice Johnson", 1, 480, 600);
+            Reservation res2 = new Reservation(102, "Bob Smith", 1, 540, 660);
+            manager.makeReservation(res1);
+            assertFalse(manager.makeReservation(res2));
+        }
+
+        @Test
+        public void testDifferentEquipmentNoConflict() {
+            FacilityManager manager = new FacilityManager();
+            Reservation res1 = new Reservation(101, "Alice Johnson", 1, 480, 600);
+            Reservation res2 = new Reservation(102, "Bob Smith", 2, 480, 600);
+            assertTrue(manager.makeReservation(res1));
+            assertTrue(manager.makeReservation(res2));
+        }
+
+        @Test
+        public void testCancelledReservationFreesSlot() {
+            FacilityManager manager = new FacilityManager();
+            Reservation res1 = new Reservation(101, "Alice Johnson", 1, 480, 600);
+            manager.makeReservation(res1);
+            assertTrue(manager.cancelReservation(101));
+            // After cancellation, the same slot should be bookable again
+            Reservation res2 = new Reservation(102, "Bob Smith", 1, 480, 600);
+            assertTrue(manager.makeReservation(res2));
+        }
+
+        @Test
+        public void testGetReservationsForMember() {
+            FacilityManager manager = new FacilityManager();
+            Reservation res1 = new Reservation(101, "Alice Johnson", 1, 480, 600);
+            Reservation res2 = new Reservation(102, "Bob Smith", 1, 660, 720);
+            Reservation res3 = new Reservation(103, "Alice Johnson", 2, 720, 840);
+            Reservation res4 = new Reservation(104, "Carol White", 2, 480, 540);
+            manager.makeReservation(res1);
+            manager.makeReservation(res2);
+            manager.makeReservation(res3);
+            manager.makeReservation(res4);
+
+            List<Reservation> aliceRes = manager.getReservationsForMember("Alice Johnson");
+            assertEquals(2, aliceRes.size());
+            assertTrue(aliceRes.contains(res1));
+            assertTrue(aliceRes.contains(res3));
+
+            // new String(...) ensures comparison uses equals, not ==
+            List<Reservation> aliceResByNewString =
+                manager.getReservationsForMember(new String("Alice Johnson"));
+            assertEquals(2, aliceResByNewString.size());
+            assertTrue(aliceResByNewString.contains(res1));
+            assertTrue(aliceResByNewString.contains(res3));
+
+            List<Reservation> bobRes = manager.getReservationsForMember("Bob Smith");
+            assertEquals(1, bobRes.size());
+            assertTrue(bobRes.contains(res2));
+
+            // Member with no reservations
+            assertEquals(0, manager.getReservationsForMember("David Brown").size());
+
+            // Cancelled reservations should not appear
+            manager.cancelReservation(101);
+            List<Reservation> aliceResAfter = manager.getReservationsForMember("Alice Johnson");
+            assertEquals(1, aliceResAfter.size());
+            assertTrue(aliceResAfter.contains(res3));
+        }
+
+        @Test
+        public void testGetEquipmentSummary() {
+            FacilityManager manager = new FacilityManager();
+            Reservation res1 = new Reservation(101, "Alice Johnson", 1, 480, 540);
+            Reservation res2 = new Reservation(102, "Bob Smith", 1, 660, 720);
+            Reservation res3 = new Reservation(103, "Carol White", 1, 720, 780);
+            Reservation res4 = new Reservation(104, "David Brown", 2, 480, 600);
+            manager.makeReservation(res1);
+            manager.makeReservation(res2);
+            manager.makeReservation(res3);
+            manager.makeReservation(res4);
+
+            Map<String, Integer> summaryE1 = manager.getEquipmentSummary(1);
+            assertEquals(3, (int) summaryE1.get("total_reservations"));
+            assertEquals(180, (int) summaryE1.get("total_minutes"));
+
+            Map<String, Integer> summaryE2 = manager.getEquipmentSummary(2);
+            assertEquals(1, (int) summaryE2.get("total_reservations"));
+            assertEquals(120, (int) summaryE2.get("total_minutes"));
+
+            // Equipment with no reservations
+            Map<String, Integer> summaryE3 = manager.getEquipmentSummary(3);
+            assertEquals(0, (int) summaryE3.get("total_reservations"));
+            assertEquals(0, (int) summaryE3.get("total_minutes"));
+
+            // Cancelled reservations should not be counted
+            manager.cancelReservation(101);
+            Map<String, Integer> summaryE1After = manager.getEquipmentSummary(1);
+            assertEquals(2, (int) summaryE1After.get("total_reservations"));
+            assertEquals(120, (int) summaryE1After.get("total_minutes"));
+        }
+
+        @Test
+        public void testGetAvailableEquipment() {
+            FacilityManager manager = new FacilityManager();
+            manager.addEquipment(new Equipment(1, "Treadmill"));
+            manager.addEquipment(new Equipment(2, "Rowing Machine"));
+            manager.addEquipment(new Equipment(3, "Exercise Bike"));
+            manager.addEquipment(new Equipment(4, "Elliptical Trainer"));
+
+            // equip1: reserved 480-600
+            // equip2: reserved 300-420
+            // equip3: reserved 700-780
+            // equip4: no reservations
+            manager.makeReservation(new Reservation(101, "Alice Johnson", 1, 480, 600));
+            manager.makeReservation(new Reservation(102, "Bob Smith", 2, 300, 420));
+            manager.makeReservation(new Reservation(103, "Carol White", 3, 700, 780));
+
+            // Request: 630-720
+            // equip1: res ends 600, gap = 30 min exactly -> available
+            // equip2: res ends 420, gap = 210 min -> available
+            // equip3: request overlaps 700-780 from 700-720 -> not available
+            // equip4: no reservations -> available
+            assertEquals(Arrays.asList(1, 2, 4), manager.getAvailableEquipment(630, 720));
+
+            // Request: 620-720
+            // equip1: res ends 600, gap = 20 min -> NOT available (under 30-min turnaround)
+            // equip2: res ends 420, gap = 200 min -> available
+            // equip3: res starts 700, within 30 min of request end (720) -> not available
+            // equip4: no reservations -> available
+            assertEquals(Arrays.asList(2, 4), manager.getAvailableEquipment(620, 720));
+
+            // Cancelled reservations should not block availability
+            manager.cancelReservation(101);
+            assertTrue(manager.getAvailableEquipment(620, 720).contains(1));
+
+            // No equipment available
+            FacilityManager manager2 = new FacilityManager();
+            manager2.addEquipment(new Equipment(5, "Weight Bench"));
+            manager2.makeReservation(new Reservation(201, "Alice Johnson", 5, 480, 600));
+            assertEquals(new ArrayList<>(), manager2.getAvailableEquipment(610, 700));
+
+            // Turnaround applies before an existing reservation too
+            // Existing res: 600-720. Request 500-580: gap = 20 min -> not available
+            // Request 500-570: gap = exactly 30 min -> available
+            FacilityManager manager3 = new FacilityManager();
+            manager3.addEquipment(new Equipment(6, "Spin Bike"));
+            manager3.makeReservation(new Reservation(301, "Nina Patel", 6, 600, 720));
+            assertEquals(new ArrayList<>(), manager3.getAvailableEquipment(500, 580));
+            assertEquals(Arrays.asList(6), manager3.getAvailableEquipment(500, 570));
+        }
+    }
+
+    public static void main(String[] args) {
+        Result result = JUnitCore.runClasses(TestSuite.class);
+        for (Failure failure : result.getFailures()) {
+            System.out.println(failure.getTrace());
+        }
+        if (result.wasSuccessful()) {
+            System.out.println("All tests passed successfully.");
+        } else {
+            System.err.println("Tests failed: " + result.getFailureCount() + " test(s) failed.");
+            System.exit(1);
+        }
+    }
+}
